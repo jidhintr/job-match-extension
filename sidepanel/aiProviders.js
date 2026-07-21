@@ -62,7 +62,7 @@ async function fetchWithTimeout(url, options, timeoutMs = 15000) {
 }
 
 // ---------- OpenAI-compatible chat providers (DeepSeek, OpenAI) ----------
-async function scanOpenAICompatible({ endpoint, apiKey, model, promptCtx, supportsJsonMode }) {
+async function scanOpenAICompatible({ endpoint, apiKey, model, providerLabel, promptCtx, supportsJsonMode }) {
   const body = {
     model,
     messages: [
@@ -80,7 +80,8 @@ async function scanOpenAICompatible({ endpoint, apiKey, model, promptCtx, suppor
 
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(data?.error?.message || `Request failed (HTTP ${response.status}).`);
+    const message = data?.error?.message || data?.detail || `Request failed (HTTP ${response.status}).`;
+    throw new Error(`${providerLabel} model ${model} failed: ${message}`);
   }
   const content = data?.choices?.[0]?.message?.content || "";
   const parsed = extractJsonBlock(content);
@@ -92,6 +93,7 @@ export function scanDeepSeek({ apiKey, model, ...promptCtx }) {
     endpoint: "https://api.deepseek.com/chat/completions",
     apiKey,
     model: model || "deepseek-v4-flash",
+    providerLabel: "DeepSeek",
     promptCtx,
     supportsJsonMode: true
   });
@@ -102,6 +104,18 @@ export function scanOpenAI({ apiKey, model, ...promptCtx }) {
     endpoint: "https://api.openai.com/v1/chat/completions",
     apiKey,
     model: model || "gpt-5-mini",
+    providerLabel: "OpenAI",
+    promptCtx,
+    supportsJsonMode: true
+  });
+}
+
+export function scanPerplexity({ apiKey, model, ...promptCtx }) {
+  return scanOpenAICompatible({
+    endpoint: "https://api.perplexity.ai/chat/completions",
+    apiKey,
+    model: model || "sonar",
+    providerLabel: "Perplexity",
     promptCtx,
     supportsJsonMode: true
   });
@@ -163,6 +177,12 @@ export async function scanNonGeminiSources(ctx) {
     tasks.push({
       source: "OpenAI",
       run: () => scanOpenAI({ apiKey: keys.openai, model: models.openai, ...ctx })
+    });
+  }
+  if (keys.perplexity) {
+    tasks.push({
+      source: "Perplexity",
+      run: () => scanPerplexity({ apiKey: keys.perplexity, model: models.perplexity, ...ctx })
     });
   }
 

@@ -12,12 +12,15 @@ const deepseekKeyInput = document.getElementById("deepseekKey");
 const deepseekModelInput = document.getElementById("deepseekModel");
 const openaiKeyInput = document.getElementById("openaiKey");
 const openaiModelInput = document.getElementById("openaiModel");
+const perplexityKeyInput = document.getElementById("perplexityKey");
+const perplexityModelInput = document.getElementById("perplexityModel");
 const saveProvidersBtn = document.getElementById("saveProviders");
 const providersStatus = document.getElementById("providersStatus");
 
 const PROVIDER_DEFAULT_MODELS = {
   deepseek: "deepseek-v4-flash",
-  openai: "gpt-5-mini"
+  openai: "gpt-5-mini",
+  perplexity: "sonar"
 };
 
 const resumeInput = document.getElementById("resume");
@@ -45,7 +48,9 @@ async function loadSavedValues() {
     "deepseekKey",
     "deepseekModel",
     "openaiKey",
-    "openaiModel"
+    "openaiModel",
+    "perplexityKey",
+    "perplexityModel"
   ]);
   if (stored.geminiApiKey) apiKeyInput.value = stored.geminiApiKey;
   if (stored.sheetsWebhookUrl) sheetsWebhookUrlInput.value = stored.sheetsWebhookUrl;
@@ -56,6 +61,8 @@ async function loadSavedValues() {
   deepseekModelInput.value = stored.deepseekModel || PROVIDER_DEFAULT_MODELS.deepseek;
   if (stored.openaiKey) openaiKeyInput.value = stored.openaiKey;
   openaiModelInput.value = stored.openaiModel || PROVIDER_DEFAULT_MODELS.openai;
+  if (stored.perplexityKey) perplexityKeyInput.value = stored.perplexityKey;
+  perplexityModelInput.value = stored.perplexityModel || PROVIDER_DEFAULT_MODELS.perplexity;
 
   updateCharCount();
 }
@@ -92,7 +99,9 @@ saveProvidersBtn.addEventListener("click", async () => {
     deepseekKey: deepseekKeyInput.value.trim(),
     deepseekModel: deepseekModelInput.value.trim() || PROVIDER_DEFAULT_MODELS.deepseek,
     openaiKey: openaiKeyInput.value.trim(),
-    openaiModel: openaiModelInput.value.trim() || PROVIDER_DEFAULT_MODELS.openai
+    openaiModel: openaiModelInput.value.trim() || PROVIDER_DEFAULT_MODELS.openai,
+    perplexityKey: perplexityKeyInput.value.trim(),
+    perplexityModel: perplexityModelInput.value.trim() || PROVIDER_DEFAULT_MODELS.perplexity
   });
   // No per-source key is required — Gemini (saved above) drives consolidation on
   // its own; these are all optional extra scan sources.

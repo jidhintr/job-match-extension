@@ -10,30 +10,16 @@
  * Two independent payload shapes land here, distinguished by `type`:
  *   - "job_match"      — Resume Matcher's condensed per-job row (Date/Company/Title/
  *                         ATS/Chance/MissingSkills/URL) → appended to one shared log tab.
- *   - "interview_prep"  — Interview Prep's per-question progress → written to a tab
- *                         named after the company, fully rewritten (not appended) each
- *                         save so re-syncing never creates duplicate rows.
+ *   - "interview_prep"  — Interview Prep's questions only (no job/round/status
+ *                         metadata) → written to a tab named after the company,
+ *                         fully rewritten (not appended) each save so re-syncing
+ *                         never creates duplicate rows.
  */
 
 const MASTER_LOG_SHEET_NAME = "Job Match Log";
 const MASTER_LOG_HEADERS = ["Date", "Company Name", "Job Title", "ATS Score (%)", "Interview Chance (%)", "Missing Skills", "Job URL"];
 
-const COMPANY_SHEET_HEADERS = [
-  "Job Title",
-  "Job URL",
-  "Overall Progress (%)",
-  "Recruiter Insights",
-  "Area",
-  "Predicted Round",
-  "Area Weight (%)",
-  "Area Completed",
-  "Question",
-  "Category",
-  "Difficulty",
-  "Frequency",
-  "Question Completed",
-  "Last Synced"
-];
+const COMPANY_SHEET_HEADERS = ["Question"];
 
 function sanitizeSheetName(name) {
   // Google Sheets tab names can't contain : \ / ? * [ ] and must be <= 100 chars.
@@ -74,38 +60,26 @@ function handleInterviewPrepSync(data) {
   const sheet = getOrCreateSheet(sheetName);
   ensureHeaders(sheet, COMPANY_SHEET_HEADERS);
 
-  const jobTitle = data.jobTitle || "";
-  const jobUrl = data.jobUrl || "";
-  const progress = data.progressPercent ?? "";
-  const notes = data.recruiterInsights || "";
-  const now = data.date || new Date().toISOString();
   const areas = Array.isArray(data.areas) ? data.areas : [];
-
-  const rows = [];
+  const questionTexts = [];
   areas.forEach((area) => {
-    const base = [jobTitle, jobUrl, progress, notes, area.title || "", area.predictedRound || "", area.weightPercent ?? "", area.completed ? "Yes" : "No"];
     const questions = Array.isArray(area.questions) ? area.questions : [];
-    if (questions.length === 0) {
-      rows.push([...base, "", "", "", "", "", now]);
-    } else {
-      questions.forEach((q) => {
-        rows.push([...base, q.text || "", q.category || "", q.difficulty || "", q.frequency || "", q.checked ? "Yes" : "No", now]);
-      });
-    }
+    questions.forEach((q) => {
+      if (q.text) questionTexts.push([q.text]);
+    });
   });
 
-  // Full-snapshot sync, not append: each save represents the complete current
-  // state, so we clear existing data rows first — otherwise every checkbox
-  // toggle would pile up a new set of duplicate rows instead of updating in place.
+  // Full-snapshot sync: each save replaces the tab's question list with the
+  // current full set, so re-syncing never creates duplicate rows.
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
   }
-  if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, COMPANY_SHEET_HEADERS.length).setValues(rows);
+  if (questionTexts.length > 0) {
+    sheet.getRange(2, 1, questionTexts.length, 1).setValues(questionTexts);
   }
 
-  return { status: "ok", sheet: sheet.getName(), rows: rows.length };
+  return { status: "ok", sheet: sheet.getName(), rows: questionTexts.length };
 }
 
 function doPost(e) {

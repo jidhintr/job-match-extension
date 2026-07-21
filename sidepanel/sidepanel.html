@@ -295,22 +295,30 @@
 
       <!-- INTERVIEW PREP TAB -->
       <div id="prepView" class="tab-view hidden">
-        <div id="prepEmptyState" class="empty-state">
-          <div class="empty-icon">🎯</div>
-          <p>Open a job posting, then click <strong>Generate Interview Prep</strong>.</p>
+        <details id="prepSourcePicker" class="prep-source-picker">
+          <summary id="prepSourcePickerSummary">Scan Sources</summary>
+          <div class="prep-source-options">
+            <label class="prep-checkbox-label"><input type="checkbox" id="srcGemini" /> Gemini</label>
+            <label class="prep-checkbox-label"><input type="checkbox" id="srcTavily" /> Tavily (web)</label>
+            <label class="prep-checkbox-label"><input type="checkbox" id="srcDeepseek" /> DeepSeek</label>
+            <label class="prep-checkbox-label"><input type="checkbox" id="srcOpenai" /> ChatGPT (OpenAI)</label>
+            <label class="prep-checkbox-label"><input type="checkbox" id="srcPerplexity" /> Perplexity</label>
+          </div>
+        </details>
+
+        <div class="prep-input-actions top-actions">
+          <button id="generatePrepBtn" class="primary-btn full-width">🎯 Generate Interview Prep</button>
+          <button id="savePrepSheetsBtn" class="secondary-btn full-width" type="button" disabled>💾 Save Progress to Sheet</button>
         </div>
+        <div id="prepStatusLine" class="status-line"></div>
 
       <div class="prep-input-card">
         <label for="prepRecruiterInsights">Recruiter Insights / Focus Notes</label>
         <textarea id="prepRecruiterInsights" placeholder="Paste recruiter feedback, interview round details, or target areas here..."></textarea>
         <div class="prep-input-actions">
           <button id="updateFocusBtn" class="secondary-btn full-width" type="button">Update Focus Areas</button>
-          <button id="savePrepSheetsBtn" class="secondary-btn full-width" type="button" disabled>💾 Save Progress to Sheet</button>
         </div>
       </div>
-
-      <button id="generatePrepBtn" class="primary-btn full-width">🎯 Generate Interview Prep</button>
-      <div id="prepStatusLine" class="status-line"></div>
 
       <div id="prepJobIdentity" class="job-identity prep-job-identity hidden">
         <div id="prepJobTitleValue" class="job-role-title">--</div>

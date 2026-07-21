@@ -1,18 +1,14 @@
 // Ordered cascade, top-tier first. Every Gemini operation (resume matching,
 // question generation, master consolidation) walks this list and drops to the
-// next model on any transient failure. Note: some of these IDs may not be live
-// for a given key/region (Google churns model names constantly — we've already
-// had to migrate this project's model twice). That's fine by design: a
-// "model not found" (404) is treated as retryable, so an unavailable tier is
-// simply skipped rather than dead-ending the whole call. Edit this list if you
-// know your key's exact available models.
+// next model on any transient failure. Google churns model availability often,
+// so we keep the list intentionally current and retryable: any 404/400/429/503,
+// timeout, or text such as "model is no longer available" simply skips to the
+// next tier instead of dead-ending the whole call.
 const GEMINI_MODELS = [
-  "gemini-3.1-pro",        // Top-tier reasoning & deep synthesis
-  "gemini-3.5-flash",      // High speed, latest flash intelligence
-  "gemini-3-flash",        // Fast, reliable general-purpose
-  "gemini-2.5-pro",        // High context, heavy processing fallback
-  "gemini-2.5-flash",      // Balanced workhorse fallback
-  "gemini-2.5-flash-lite"  // Ultra-lightweight final failsafe
+  "gemini-3.1-flash-lite", // Most daily headroom on the free tier — try first
+  "gemini-2.5-flash",      // Balanced workhorse, some headroom
+  "gemini-2.5-flash-lite", // Lightweight fallback, some headroom
+  "gemini-3.5-flash"       // Highest quality but tightest daily cap — last resort
 ];
 
 const GEMINI_CALL_TIMEOUT_MS = 10000;
@@ -298,7 +294,6 @@ const prepView = document.getElementById("prepView");
 // ---------- Interview Prep DOM refs ----------
 const generatePrepBtn = document.getElementById("generatePrepBtn");
 const prepStatusLine = document.getElementById("prepStatusLine");
-const prepEmptyState = document.getElementById("prepEmptyState");
 const prepDashboard = document.getElementById("prepDashboard");
 const prepProgressValue = document.getElementById("prepProgressValue");
 const prepProgressFill = document.getElementById("prepProgressFill");
@@ -311,6 +306,14 @@ const savePrepSheetsBtn = document.getElementById("savePrepSheetsBtn");
 const prepJobIdentity = document.getElementById("prepJobIdentity");
 const prepJobTitleEl = document.getElementById("prepJobTitleValue");
 const prepCompanyNameEl = document.getElementById("prepCompanyNameValue");
+const prepSourcePickerSummary = document.getElementById("prepSourcePickerSummary");
+const sourceCheckboxes = {
+  gemini: document.getElementById("srcGemini"),
+  tavily: document.getElementById("srcTavily"),
+  deepseek: document.getElementById("srcDeepseek"),
+  openai: document.getElementById("srcOpenai"),
+  perplexity: document.getElementById("srcPerplexity")
+};
 
 // ---------- State ----------
 let apiKey = "";
@@ -326,6 +329,12 @@ let deepseekKey = "";
 let deepseekModel = "";
 let openaiKey = "";
 let openaiModel = "";
+let perplexityKey = "";
+let perplexityModel = "";
+// User-chosen subset of scan sources for Interview Prep question fetching —
+// independent of which keys happen to be configured. Persisted across
+// sessions since it's a standing preference, not per-job state.
+let prepSourceSelection = { gemini: true, tavily: true, deepseek: true, openai: true, perplexity: true };
 let lastJobText = "";
 let lastJobUrl = "";
 let lastCompanyGuess = "";
@@ -421,7 +430,10 @@ async function init() {
     "deepseekKey",
     "deepseekModel",
     "openaiKey",
-    "openaiModel"
+    "openaiModel",
+    "perplexityKey",
+    "perplexityModel",
+    "prepSourceSelection"
   ]);
   apiKey = stored.geminiApiKey || "";
   masterResume = stored.masterResume || "";
@@ -431,14 +443,60 @@ async function init() {
   deepseekModel = stored.deepseekModel || "deepseek-v4-flash";
   openaiKey = stored.openaiKey || "";
   openaiModel = stored.openaiModel || "gpt-5-mini";
+  perplexityKey = stored.perplexityKey || "";
+  perplexityModel = stored.perplexityModel || "sonar";
+  prepSourceSelection = { ...prepSourceSelection, ...(stored.prepSourceSelection || {}) };
   resumeQuickEdit.value = masterResume;
   // Restore per-tab state (including any uploaded-resume override) before
   // computing button states, so a tab with an override but no saved master
   // resume doesn't start with Analyze incorrectly disabled.
   await restoreTabState();
-  await restorePrepStateForCurrentTab();
   refreshSetupBanner();
   refreshSaveSheetsButton();
+  refreshSourcePicker();
+}
+
+// ---------- Interview Prep: scan source picker ----------
+function refreshSourcePicker() {
+  const keyBySource = {
+    gemini: apiKey,
+    tavily: tavilyKey,
+    deepseek: deepseekKey,
+    openai: openaiKey,
+    perplexity: perplexityKey
+  };
+  let activeCount = 0;
+  for (const [source, checkbox] of Object.entries(sourceCheckboxes)) {
+    if (!checkbox) continue;
+    const hasKey = !!keyBySource[source];
+    checkbox.checked = !!prepSourceSelection[source];
+    checkbox.disabled = !hasKey;
+    checkbox.title = hasKey ? "" : "Add this provider's API key in Settings to enable it.";
+    if (hasKey && checkbox.checked) activeCount++;
+  }
+  if (prepSourcePickerSummary) {
+    prepSourcePickerSummary.textContent = `Scan Sources (${activeCount} selected)`;
+  }
+}
+
+Object.entries(sourceCheckboxes).forEach(([source, checkbox]) => {
+  checkbox?.addEventListener("change", () => {
+    prepSourceSelection = { ...prepSourceSelection, [source]: checkbox.checked };
+    chrome.storage.local.set({ prepSourceSelection });
+    refreshSourcePicker();
+  });
+});
+
+// Returns the set of sources that are both user-selected and actually
+// configured with a key — the effective set to use for a scan.
+function effectivePrepSources() {
+  return {
+    gemini: prepSourceSelection.gemini && !!apiKey,
+    tavily: prepSourceSelection.tavily && !!tavilyKey,
+    deepseek: prepSourceSelection.deepseek && !!deepseekKey,
+    openai: prepSourceSelection.openai && !!openaiKey,
+    perplexity: prepSourceSelection.perplexity && !!perplexityKey
+  };
 }
 
 function refreshSetupBanner() {
@@ -496,8 +554,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.deepseekModel) deepseekModel = changes.deepseekModel.newValue || "deepseek-v4-flash";
   if (changes.openaiKey) openaiKey = changes.openaiKey.newValue || "";
   if (changes.openaiModel) openaiModel = changes.openaiModel.newValue || "gpt-5-mini";
+  if (changes.perplexityKey) perplexityKey = changes.perplexityKey.newValue || "";
+  if (changes.perplexityModel) perplexityModel = changes.perplexityModel.newValue || "sonar";
   refreshSetupBanner();
   refreshSaveSheetsButton();
+  refreshSourcePicker();
 });
 
 // ---------- Drawer ----------
@@ -622,7 +683,16 @@ async function extractJobTextFromActiveTab() {
 function isRetryableError(err) {
   if (!err) return false;
   if (err.isTimeout || err.isInvalidResponse) return true;
-  return [429, 503, 404, 400].includes(err.httpStatus);
+  if ([429, 503, 404, 400].includes(err.httpStatus)) return true;
+
+  const message = String(err.message || "").toLowerCase();
+  return /(429|503|404|400|rate limit|over quota|timed out|busy|no longer available|not found|unavailable|quota|too many requests|empty response|malformed json|model .* not available|model .* is no longer available)/i.test(message);
+}
+
+function formatModelRetryMessage(err, contextLabel = "Gemini") {
+  const attemptedModel = err?.model || "an unknown model";
+  const lastFailure = err?.message || "request failed";
+  return `All ${contextLabel} models are busy, timed out, or over quota right now. The last attempted ${contextLabel} model was ${attemptedModel}. ${lastFailure}`;
 }
 
 async function callGeminiModel(model, systemPrompt, userPrompt, schema) {
@@ -649,12 +719,14 @@ async function callGeminiModel(model, systemPrompt, userPrompt, schema) {
     if (err.name === "AbortError") {
       const timeoutErr = new Error(`Gemini ${model} timed out after ${GEMINI_CALL_TIMEOUT_MS / 1000}s.`);
       timeoutErr.isTimeout = true;
+      timeoutErr.model = model;
       throw timeoutErr;
     }
     // Network-level failure (DNS, offline, CORS) — treat as retryable so the
     // cascade can try the next tier rather than dead-ending.
     const netErr = new Error(err.message || "Network error calling Gemini.");
     netErr.isInvalidResponse = true;
+    netErr.model = model;
     throw netErr;
   } finally {
     clearTimeout(timeoutId);
@@ -663,8 +735,10 @@ async function callGeminiModel(model, systemPrompt, userPrompt, schema) {
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const err = new Error(data?.error?.message || `Gemini request failed (HTTP ${response.status}).`);
+    const errMessage = data?.error?.message || `Gemini request failed (HTTP ${response.status}).`;
+    const err = new Error(errMessage);
     err.httpStatus = response.status;
+    err.model = model;
     throw err;
   }
 
@@ -674,9 +748,14 @@ async function callGeminiModel(model, systemPrompt, userPrompt, schema) {
     // A safety block is a real refusal, not a transient hiccup — don't burn the
     // whole cascade retrying it; surface it. An otherwise-empty response is
     // treated as invalid and retried on the next tier.
-    if (blockReason) throw new Error(`Gemini blocked the request: ${blockReason}`);
+    if (blockReason) {
+      const blockErr = new Error(`Gemini blocked the request: ${blockReason}`);
+      blockErr.model = model;
+      throw blockErr;
+    }
     const emptyErr = new Error("Gemini returned an empty response.");
     emptyErr.isInvalidResponse = true;
+    emptyErr.model = model;
     throw emptyErr;
   }
 
@@ -685,6 +764,7 @@ async function callGeminiModel(model, systemPrompt, userPrompt, schema) {
   } catch {
     const parseErr = new Error("Gemini returned malformed JSON.");
     parseErr.isInvalidResponse = true;
+    parseErr.model = model;
     throw parseErr;
   }
 }
@@ -701,6 +781,7 @@ async function callGeminiWithFallback(systemPrompt, userPrompt, schema, onModelS
       return await callGeminiModel(model, systemPrompt, userPrompt, schema);
     } catch (err) {
       lastErr = err;
+      lastErr.model = model;
       const isLastModel = i === GEMINI_MODELS.length - 1;
       if (isRetryableError(err) && !isLastModel) {
         console.warn(`Gemini ${model} failed (${err.message}) — falling back to ${GEMINI_MODELS[i + 1]}.`);
@@ -1015,7 +1096,7 @@ async function runAnalysis({ reextract }) {
   } catch (err) {
     console.error(err);
     const message = isRetryableError(err)
-      ? "All models are busy, timed out, or over quota right now. This is temporary on Google's side — try again in a few minutes."
+      ? formatModelRetryMessage(err, "Gemini")
       : err.message || "Something went wrong.";
     setStatus(message, "err");
   } finally {
@@ -1114,13 +1195,13 @@ function prepStorageKey(url) {
 async function loadPrepStateForUrl(url) {
   if (!url) return null;
   const key = prepStorageKey(url);
-  const stored = await chrome.storage.local.get(key);
+  const stored = await chrome.storage.session.get(key);
   return stored[key] || null;
 }
 
 async function savePrepState() {
-  if (!prepJobUrl) return;
-  await chrome.storage.local.set({
+  if (!prepJobUrl || !currentTabId) return;
+  await chrome.storage.session.set({
     [prepStorageKey(prepJobUrl)]: {
       areas: prepAreas,
       recruiterNotes: prepRecruiterNotes,
@@ -1206,11 +1287,15 @@ function setPrepStatus(message, kind) {
 // Which sources a scan will actually query, based on configured keys. Gemini is
 // always in (consolidation engine); the rest join only if their key is set.
 function prepScanSourcesLabel() {
-  const sources = ["Gemini"];
-  if (tavilyKey) sources.push("Tavily 🌐");
-  if (deepseekKey) sources.push("DeepSeek");
-  if (openaiKey) sources.push("OpenAI");
-  return sources.length === 1 ? "Gemini only" : sources.join(" + ");
+  const active = effectivePrepSources();
+  const sources = [];
+  if (active.gemini) sources.push("Gemini");
+  if (active.tavily) sources.push("Tavily 🌐");
+  if (active.deepseek) sources.push("DeepSeek");
+  if (active.openai) sources.push("OpenAI");
+  if (active.perplexity) sources.push("Perplexity");
+  if (sources.length === 0) return "no sources selected";
+  return sources.length === 1 ? `${sources[0]} only` : sources.join(" + ");
 }
 
 function setPrepBusy(isBusy, label) {
@@ -1311,15 +1396,15 @@ function renderQuestionsList(area, listEl, masterCheckboxEl) {
     span.textContent = q.text;
     textWrap.appendChild(span);
 
-    // Enrichment badges from the consolidation pass (absent on older saved data).
-    if (q.difficulty || q.frequency || q.category) {
-      const badges = document.createElement("div");
-      badges.className = "prep-question-badges";
-      if (q.category) badges.appendChild(makeQBadge(q.category, "cat"));
-      if (q.difficulty) badges.appendChild(makeQBadge(q.difficulty, `diff-${q.difficulty.toLowerCase()}`));
-      if (q.frequency) badges.appendChild(makeQBadge(`${q.frequency} freq`, `freq-${q.frequency.toLowerCase()}`));
-      textWrap.appendChild(badges);
-    }
+    // Enrichment badges from the consolidation pass (absent on older saved data),
+    // plus an "Answer" action alongside them that opens Gemini with the question.
+    const badges = document.createElement("div");
+    badges.className = "prep-question-badges";
+    if (q.category) badges.appendChild(makeQBadge(q.category, "cat"));
+    if (q.difficulty) badges.appendChild(makeQBadge(q.difficulty, `diff-${q.difficulty.toLowerCase()}`));
+    if (q.frequency) badges.appendChild(makeQBadge(`${q.frequency} freq`, `freq-${q.frequency.toLowerCase()}`));
+    badges.appendChild(makeAnswerButton(q.text));
+    textWrap.appendChild(badges);
 
     li.append(checkbox, textWrap);
     listEl.appendChild(li);
@@ -1340,6 +1425,144 @@ function makeQBadge(text, variant) {
   badge.className = `prep-q-badge ${variant}`;
   badge.textContent = text;
   return badge;
+}
+
+function buildAnswerPrompt(questionText) {
+  return `Answer this interview question exactly like a lead engineer would in a real interview — cover every edge case and possibility, don't leave anything out, and explain your reasoning clearly the way you'd walk an interviewer through it out loud:\n\n"${questionText}"`;
+}
+
+// Base chat URLs for each provider. Perplexity's ?q= reliably prefills+runs on
+// its own; the rest get their prompt typed in and submitted via an injected
+// content script once the tab finishes loading (see fillAndSubmitPrompt).
+const ANSWER_PROVIDER_URLS = {
+  gemini: "https://gemini.google.com/app",
+  deepseek: "https://chat.deepseek.com/",
+  openai: "https://chatgpt.com/",
+  perplexity: "https://www.perplexity.ai/search"
+};
+
+// Runs inside the opened chat tab. Must be fully self-contained (no closures
+// over outer scope) since chrome.scripting serializes only the function body.
+// Best-effort: each site's input DOM can change at any time and break this;
+// it retries briefly, and the prompt is also on the clipboard as a fallback.
+function fillAndSubmitPrompt(promptText) {
+  function setNativeValue(el, value) {
+    const proto = el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (setter) setter.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function findFirst(selectors) {
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  }
+
+  function pressEnter(el) {
+    ["keydown", "keypress", "keyup"].forEach((type) => {
+      el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+    });
+  }
+
+  function tryFill(attempt) {
+    const host = location.hostname;
+    let input = null;
+    let contentEditable = false;
+
+    if (host.includes("chatgpt.com") || host.includes("chat.openai.com")) {
+      input = findFirst(["#prompt-textarea", "textarea[data-id]", "textarea"]);
+    } else if (host.includes("gemini.google.com")) {
+      input = findFirst(['div.ql-editor[contenteditable="true"]', 'rich-textarea div[contenteditable="true"]', 'div[contenteditable="true"]']);
+      contentEditable = true;
+    } else if (host.includes("chat.deepseek.com") || host.includes("perplexity.ai")) {
+      input = findFirst(["textarea", 'div[contenteditable="true"]']);
+      contentEditable = !!input && input.tagName !== "TEXTAREA";
+    }
+
+    if (!input) {
+      if (attempt < 25) setTimeout(() => tryFill(attempt + 1), 400);
+      return;
+    }
+
+    input.focus();
+    if (contentEditable) {
+      input.textContent = promptText;
+      input.dispatchEvent(new InputEvent("input", { bubbles: true, data: promptText, inputType: "insertText" }));
+    } else {
+      setNativeValue(input, promptText);
+    }
+
+    setTimeout(() => {
+      const sendBtn = findFirst([
+        'button[data-testid="send-button"]',
+        'button[aria-label="Send message"]',
+        'button[aria-label="Send"]',
+        'button[aria-label="Submit"]',
+        'button[type="submit"]'
+      ]);
+      if (sendBtn && !sendBtn.disabled) sendBtn.click();
+      else pressEnter(input);
+    }, 400);
+  }
+
+  tryFill(0);
+}
+
+function askInTab(url, promptText) {
+  chrome.tabs.create({ url, active: true }, (tab) => {
+    if (!tab?.id) return;
+    const tabId = tab.id;
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
+      chrome.tabs.onUpdated.removeListener(listener);
+      // Give the page's JS a moment to hydrate its input box after "complete".
+      setTimeout(() => {
+        chrome.scripting.executeScript({
+          target: { tabId },
+          func: fillAndSubmitPrompt,
+          args: [promptText]
+        }).catch(() => {});
+      }, 900);
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+function makeAnswerButton(questionText) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "prep-q-badge prep-answer-btn";
+  btn.textContent = "Answer";
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const prompt = buildAnswerPrompt(questionText);
+
+    const active = effectivePrepSources();
+    const targets = Object.keys(ANSWER_PROVIDER_URLS).filter((source) => active[source]);
+    if (targets.length === 0) {
+      setPrepStatus("No AI source selected in Scan Sources — check at least one to use Answer.", "err");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(prompt);
+    } catch {
+      // Best-effort — auto-fill below doesn't depend on the clipboard.
+    }
+
+    targets.forEach((source) => {
+      const base = ANSWER_PROVIDER_URLS[source];
+      const url = source === "perplexity" ? `${base}?q=${encodeURIComponent(prompt)}` : base;
+      askInTab(url, prompt);
+    });
+
+    setPrepStatus("Opening and asking on: " + targets.join(", ") + ". (Also copied to clipboard as backup.)", "ok");
+  });
+  return btn;
 }
 
 function toggleQuestion(area, question, checked, liEl, masterCheckboxEl) {
@@ -1392,6 +1615,13 @@ async function fetchAreaQuestions(area, els) {
     return;
   }
 
+  const active = effectivePrepSources();
+  if (!active.gemini && !active.tavily && !active.deepseek && !active.openai && !active.perplexity) {
+    statusEl.textContent = "No scan sources selected — check at least one in Scan Sources.";
+    statusEl.classList.add("err");
+    return;
+  }
+
   fetchBtn.disabled = true;
   statusEl.classList.remove("err");
 
@@ -1399,11 +1629,8 @@ async function fetchAreaQuestions(area, els) {
   const jobTitle = prepJobTitle || lastResult?.job_title || "";
 
   try {
-    // ---- STEP 1: parallel scan across every configured source ----
-    const anyWebSource = !!(tavilyKey || deepseekKey || openaiKey);
-    statusEl.textContent = anyWebSource
-      ? "Scanning web + AI sources in parallel..."
-      : "Scanning with Gemini...";
+    // ---- STEP 1: parallel scan across every user-selected, configured source ----
+    statusEl.textContent = `Scanning ${prepScanSourcesLabel()}...`;
 
     const { scanNonGeminiSources } = await import(chrome.runtime.getURL("sidepanel/aiProviders.js"));
 
@@ -1414,14 +1641,19 @@ async function fetchAreaQuestions(area, els) {
       areaRound: area.predictedRound,
       jobDescription: lastJobText,
       recruiterNotes: prepRecruiterNotes,
-      keys: { tavily: tavilyKey, deepseek: deepseekKey, openai: openaiKey },
-      models: { deepseek: deepseekModel, openai: openaiModel }
+      keys: {
+        tavily: active.tavily ? tavilyKey : "",
+        deepseek: active.deepseek ? deepseekKey : "",
+        openai: active.openai ? openaiKey : "",
+        perplexity: active.perplexity ? perplexityKey : ""
+      },
+      models: { deepseek: deepseekModel, openai: openaiModel, perplexity: perplexityModel }
     };
 
     // Gemini scan + all non-Gemini sources fire together via allSettled — one
     // failing source (bad key, timeout) can't sink the batch.
     const [geminiSettled, nonGemini] = await Promise.all([
-      Promise.allSettled([geminiScanQuestions(area)]),
+      Promise.allSettled([active.gemini ? geminiScanQuestions(area) : Promise.resolve([])]),
       scanNonGeminiSources(scanCtx)
     ]);
 
@@ -1584,8 +1816,7 @@ function renderPrepAreas() {
   renderPrepProgress();
   refreshPrepSheetsButton();
   prepDashboard.classList.toggle("hidden", !hasAreas);
-  prepEmptyState.classList.toggle("hidden", hasAreas);
-  generatePrepBtn.classList.toggle("hidden", hasAreas);
+  generatePrepBtn.classList.remove("hidden");
 }
 
 async function runGeneratePrep({ forceRegenerate } = {}) {
@@ -1610,21 +1841,6 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
 
     const recruiterNotes = prepRecruiterInsights?.value.trim() || "";
     prepRecruiterNotes = recruiterNotes;
-
-    if (!forceRegenerate) {
-      const existing = await loadPrepStateForUrl(lastJobUrl);
-      if (existing?.areas?.length && existing.recruiterNotes === recruiterNotes) {
-        prepJobUrl = lastJobUrl;
-        prepAreas = existing.areas;
-        prepRecruiterNotes = existing.recruiterNotes || "";
-        prepCompanyName = existing.companyName || "";
-        prepJobTitle = existing.jobTitle || "";
-        if (prepRecruiterInsights) prepRecruiterInsights.value = prepRecruiterNotes;
-        renderPrepAreas();
-        setPrepStatus("Restored your saved interview prep for this job.", "ok");
-        return;
-      }
-    }
 
     setPrepStatus("Predicting interview focus areas...");
     const notesSection = recruiterNotes
@@ -1652,11 +1868,14 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
     ]);
     renderPrepAreas();
     await savePrepState();
+    if (sheetsWebhookUrl) {
+      await savePrepProgressToSheets({ silent: true });
+    }
     setPrepStatus("Interview prep generated.", "ok");
   } catch (err) {
     console.error(err);
     const message = isRetryableError(err)
-      ? "All models are busy, timed out, or over quota right now. This is temporary on Google's side — try again in a few minutes."
+      ? formatModelRetryMessage(err, "Gemini")
       : err.message || "Something went wrong.";
     setPrepStatus(message, "err");
   } finally {
@@ -1664,24 +1883,10 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
   }
 }
 
-// Auto-restore any saved interview prep for the current tab's URL on load,
-// so switching to this tab shows prior progress without re-generating.
+// Interview Prep now prefers a fresh generation from the current page and a
+// durable sheet sync rather than rehydrating old browser-cached questions.
 async function restorePrepStateForCurrentTab() {
-  if (currentTabId == null) return;
-  const tab = await chrome.tabs.get(currentTabId).catch(() => null);
-  const url = tab?.url || "";
-  if (!url) return;
-
-  const existing = await loadPrepStateForUrl(url);
-  if (existing?.areas?.length) {
-    prepJobUrl = url;
-    prepAreas = existing.areas;
-    prepRecruiterNotes = existing.recruiterNotes || "";
-    prepCompanyName = existing.companyName || "";
-    prepJobTitle = existing.jobTitle || "";
-    if (prepRecruiterInsights) prepRecruiterInsights.value = prepRecruiterNotes;
-    renderPrepAreas();
-  }
+  return;
 }
 
 generatePrepBtn.addEventListener("click", () => runGeneratePrep());
