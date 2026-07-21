@@ -7,6 +7,19 @@ const sheetsWebhookUrlInput = document.getElementById("sheetsWebhookUrl");
 const saveSheetsUrlBtn = document.getElementById("saveSheetsUrl");
 const sheetsUrlStatus = document.getElementById("sheetsUrlStatus");
 
+const tavilyKeyInput = document.getElementById("tavilyKey");
+const deepseekKeyInput = document.getElementById("deepseekKey");
+const deepseekModelInput = document.getElementById("deepseekModel");
+const openaiKeyInput = document.getElementById("openaiKey");
+const openaiModelInput = document.getElementById("openaiModel");
+const saveProvidersBtn = document.getElementById("saveProviders");
+const providersStatus = document.getElementById("providersStatus");
+
+const PROVIDER_DEFAULT_MODELS = {
+  deepseek: "deepseek-v4-flash",
+  openai: "gpt-5-mini"
+};
+
 const resumeInput = document.getElementById("resume");
 const saveResumeBtn = document.getElementById("saveResume");
 const resumeStatus = document.getElementById("resumeStatus");
@@ -24,14 +37,26 @@ function updateCharCount() {
 }
 
 async function loadSavedValues() {
-  const { geminiApiKey, sheetsWebhookUrl, masterResume } = await chrome.storage.local.get([
+  const stored = await chrome.storage.local.get([
     "geminiApiKey",
     "sheetsWebhookUrl",
-    "masterResume"
+    "masterResume",
+    "tavilyKey",
+    "deepseekKey",
+    "deepseekModel",
+    "openaiKey",
+    "openaiModel"
   ]);
-  if (geminiApiKey) apiKeyInput.value = geminiApiKey;
-  if (sheetsWebhookUrl) sheetsWebhookUrlInput.value = sheetsWebhookUrl;
-  if (masterResume) resumeInput.value = masterResume;
+  if (stored.geminiApiKey) apiKeyInput.value = stored.geminiApiKey;
+  if (stored.sheetsWebhookUrl) sheetsWebhookUrlInput.value = stored.sheetsWebhookUrl;
+  if (stored.masterResume) resumeInput.value = stored.masterResume;
+
+  if (stored.tavilyKey) tavilyKeyInput.value = stored.tavilyKey;
+  if (stored.deepseekKey) deepseekKeyInput.value = stored.deepseekKey;
+  deepseekModelInput.value = stored.deepseekModel || PROVIDER_DEFAULT_MODELS.deepseek;
+  if (stored.openaiKey) openaiKeyInput.value = stored.openaiKey;
+  openaiModelInput.value = stored.openaiModel || PROVIDER_DEFAULT_MODELS.openai;
+
   updateCharCount();
 }
 
@@ -59,6 +84,19 @@ saveSheetsUrlBtn.addEventListener("click", async () => {
   }
   await chrome.storage.local.set({ sheetsWebhookUrl: value });
   flashStatus(sheetsUrlStatus, value ? "Saved ✓" : "Cleared ✓", "ok");
+});
+
+saveProvidersBtn.addEventListener("click", async () => {
+  await chrome.storage.local.set({
+    tavilyKey: tavilyKeyInput.value.trim(),
+    deepseekKey: deepseekKeyInput.value.trim(),
+    deepseekModel: deepseekModelInput.value.trim() || PROVIDER_DEFAULT_MODELS.deepseek,
+    openaiKey: openaiKeyInput.value.trim(),
+    openaiModel: openaiModelInput.value.trim() || PROVIDER_DEFAULT_MODELS.openai
+  });
+  // No per-source key is required — Gemini (saved above) drives consolidation on
+  // its own; these are all optional extra scan sources.
+  flashStatus(providersStatus, "Saved ✓", "ok");
 });
 
 saveResumeBtn.addEventListener("click", async () => {

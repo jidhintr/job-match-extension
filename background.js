@@ -29,4 +29,4 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch((err) => console.error("Job Match AI: failed to set panel behavior", err));
+  .catch((err) => console.error("MatchResumer: failed to set panel behavior", err));

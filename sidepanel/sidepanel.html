@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Job Match AI</title>
+  <title>MatchResumer</title>
   <link rel="stylesheet" href="sidepanel.css" />
 </head>
 <body>
@@ -10,7 +10,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-dot"></span>
-        Job Match AI
+        MatchResumer
       </div>
       <button id="openOptions" class="icon-btn" title="Settings">⚙</button>
     </header>
@@ -300,12 +300,24 @@
           <p>Open a job posting, then click <strong>Generate Interview Prep</strong>.</p>
         </div>
 
-        <button id="generatePrepBtn" class="primary-btn full-width">🎯 Generate Interview Prep</button>
-        <div id="prepStatusLine" class="status-line"></div>
+      <div class="prep-input-card">
+        <label for="prepRecruiterInsights">Recruiter Insights / Focus Notes</label>
+        <textarea id="prepRecruiterInsights" placeholder="Paste recruiter feedback, interview round details, or target areas here..."></textarea>
+        <div class="prep-input-actions">
+          <button id="updateFocusBtn" class="secondary-btn full-width" type="button">Update Focus Areas</button>
+          <button id="savePrepSheetsBtn" class="secondary-btn full-width" type="button" disabled>💾 Save Progress to Sheet</button>
+        </div>
+      </div>
 
-        <div id="prepDashboard" class="prep-dashboard hidden">
-          <button id="regeneratePrepBtn" class="link-btn prep-regenerate-btn" type="button">🔄 Regenerate breakdown</button>
+      <button id="generatePrepBtn" class="primary-btn full-width">🎯 Generate Interview Prep</button>
+      <div id="prepStatusLine" class="status-line"></div>
 
+      <div id="prepJobIdentity" class="job-identity prep-job-identity hidden">
+        <div id="prepJobTitleValue" class="job-role-title">--</div>
+        <div id="prepCompanyNameValue" class="job-company-name">--</div>
+      </div>
+
+      <div id="prepDashboard" class="prep-dashboard hidden">
           <div class="prep-progress-card">
             <div class="prep-progress-head">
               <span>Overall Prep Progress</span>

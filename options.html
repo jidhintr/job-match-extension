@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Job Match AI — Settings</title>
+  <title>MatchResumer — Settings</title>
   <style>
     :root {
       color-scheme: light dark;
@@ -55,6 +55,7 @@
     .key-row { display: flex; gap: 8px; }
     input[type="password"],
     input[type="text"],
+    select,
     textarea {
       width: 100%;
       background: #0d1023;
@@ -66,7 +67,34 @@
       font-family: inherit;
       outline: none;
     }
-    input:focus, textarea:focus { border-color: var(--accent); }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    .provider-group {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .provider-group:last-of-type { margin-bottom: 0; }
+    .provider-group-title {
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .provider-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .provider-row:last-child { margin-bottom: 0; }
+    .provider-row input { flex: 1; }
+    .provider-row .model-input { max-width: 190px; flex: none; }
+    .field-label {
+      font-size: 10.5px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+      display: block;
+    }
     textarea {
       min-height: 320px;
       resize: vertical;
@@ -106,7 +134,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>Job Match AI — Settings</h1>
+    <h1>MatchResumer — Settings</h1>
     <p class="subtitle">Saved once, stored locally on this device. You won't be asked again.</p>
 
     <div class="card">
@@ -127,12 +155,67 @@
     </div>
 
     <div class="card">
+      <label>Interview Prep — Question Scan Sources</label>
+      <div class="hint">
+        When you click "Fetch Deep-Dive Questions" in the Interview Prep tab, every source with a key below is
+        queried <strong>in parallel</strong>, and Gemini (using the key above) then consolidates the combined
+        results — deduping, grouping, and tagging each question with difficulty &amp; frequency. Gemini alone is
+        enough; the others are optional extra sources. <strong>Tavily</strong> is a live web search (Glassdoor,
+        LeetCode, Reddit, Blind) for real reported questions. Model names shift fast — the defaults are current as
+        of writing; edit a model field if a request fails with "model not found".
+      </div>
+
+      <div class="provider-group">
+        <div class="provider-group-title">🌐 Tavily <span style="font-weight:400;color:var(--muted)">— live web search</span></div>
+        <div class="provider-row">
+          <div style="flex:1">
+            <span class="field-label">API Key</span>
+            <input type="password" id="tavilyKey" placeholder="tvly-..." autocomplete="off" />
+          </div>
+        </div>
+      </div>
+
+      <div class="provider-group">
+        <div class="provider-group-title">DeepSeek</div>
+        <div class="provider-row">
+          <div style="flex:1">
+            <span class="field-label">API Key</span>
+            <input type="password" id="deepseekKey" placeholder="sk-..." autocomplete="off" />
+          </div>
+          <div class="model-input">
+            <span class="field-label">Model</span>
+            <input type="text" id="deepseekModel" placeholder="deepseek-v4-flash" />
+          </div>
+        </div>
+      </div>
+
+      <div class="provider-group">
+        <div class="provider-group-title">OpenAI</div>
+        <div class="provider-row">
+          <div style="flex:1">
+            <span class="field-label">API Key</span>
+            <input type="password" id="openaiKey" placeholder="sk-..." autocomplete="off" />
+          </div>
+          <div class="model-input">
+            <span class="field-label">Model</span>
+            <input type="text" id="openaiModel" placeholder="gpt-5-mini" />
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="saveProviders">Save Scan Sources</button>
+        <span class="status" id="providersStatus"></span>
+      </div>
+    </div>
+
+    <div class="card">
       <label for="sheetsWebhookUrl">Google Sheets Webhook URL</label>
       <div class="hint">
-        A Google Apps Script Web App URL that appends a row per analysis. Paste the code from
-        <code>google-apps-script.js</code> into Extensions → Apps Script on your sheet, deploy it as a Web App
-        ("Execute as: Me", "Who has access: Anyone"), and paste the deployment URL here. Optional — leave blank to
-        skip Sheets logging entirely.
+        Add your Gemini API key first, then paste a deployed Apps Script Web App URL here.
+        Copy the code from <code>google-apps-script.js</code> into Extensions → Apps Script on your sheet,
+        deploy it as a Web App with "Execute as: Me" and "Who has access: Anyone", then paste the deployment URL.
+        Leave blank to skip Sheets logging entirely.
       </div>
       <input type="text" id="sheetsWebhookUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" />
       <div class="actions">

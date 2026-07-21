@@ -1,4 +1,4 @@
-# Job Match AI — Resume Analyzer (Chrome Extension)
+# MatchResumer — Resume Analyzer (Chrome Extension)
 
 Personal-use MV3 extension that evaluates a job posting against your resume using Google Gemini, in a Chrome side panel.
 
@@ -60,13 +60,40 @@ Edit the "CANDIDATE CONTEXT" block near the top of `sidepanel/sidepanel.js` if y
 
 ## Interview Prep tab
 
-A second, independent tab next to Resume Matcher (switch via the header). It doesn't use your resume at all — just the job description.
+A second, independent tab next to Resume Matcher (switch via the header). It doesn't use your resume at all — just the job description, and it determines its own company name/job title via Gemini rather than depending on Resume Matcher having run first, so it works standalone.
 
-1. Click **🎯 Generate Interview Prep**. It reuses the job text already scraped by Resume Matcher if you've run that on this tab, or scrapes fresh if not.
-2. Gemini predicts 3–6 realistic interview focus areas for the role (e.g. Coding & DSA, System Design, Behavioral) with a predicted round and a weight — shown as a donut chart plus a progress card.
-3. Each area is a card with its own checkbox (marks the whole area done) and a **Fetch Deep-Dive Questions** button — clicking it makes a *separate*, on-demand Gemini call scoped to just that area, so you're never paying for questions on areas you haven't opened yet. Each question gets its own checkbox.
-4. The **Overall Prep Progress** bar is weighted by each area's predicted importance — checking off all of System Design's questions moves the bar by System Design's donut share, not a flat 1/N. Checking an area's own checkbox instantly completes it (and all its questions); unchecking any question un-completes the area.
-5. Progress is saved to `chrome.storage.local` keyed by the job's URL (not per-tab like Resume Matcher) — revisit the same job later, even after restarting Chrome, and it's still there. **Regenerate breakdown** discards it and starts over.
+1. Optionally paste recruiter feedback or round details into **Recruiter Insights** at the top — anything in there overrides Gemini's own guesses about focus areas and weighting.
+2. Click **🎯 Generate Interview Prep** (or **Update Focus Areas** if you've added/changed recruiter insights and want to regenerate). It reuses the job text already scraped by Resume Matcher if you've run that on this tab, or scrapes fresh if not.
+3. Gemini predicts 3–6 realistic interview focus areas for the role (e.g. Coding & DSA, System Design, Behavioral) with a predicted round and a weight, plus a fixed "🔮 AI Company & Stack Predictions" wildcard area — shown as a donut chart plus a progress card.
+4. Each area is a card with its own checkbox (marks the whole area done) and a **Fetch Deep-Dive Questions** button — clicking it makes a *separate*, on-demand call to your chosen provider (see below) scoped to just that area, so you're never paying for questions on areas you haven't opened yet. Each question gets its own checkbox.
+5. The **Overall Prep Progress** bar is weighted by each area's predicted importance — checking off all of System Design's questions moves the bar by System Design's donut share, not a flat 1/N. Checking an area's own checkbox instantly completes it (and all its questions); unchecking any question un-completes the area.
+6. Progress is saved to `chrome.storage.local` keyed by the job's URL (not per-tab like Resume Matcher) — revisit the same job later, even after restarting Chrome, and it's still there.
+
+### Multi-agent question scan + Gemini consolidation
+
+**Fetch Deep-Dive Questions** is a two-stage pipeline, not a single call:
+
+1. **Parallel scan** (`Promise.allSettled`) — every source with a key configured in Settings fires at once for that area:
+   - **Gemini** (always — its key drives stage 2) reasons from training knowledge.
+   - **Tavily** (`tvly-…`) — **live web search** of Glassdoor / LeetCode / Reddit / Blind for real reported questions.
+   - **DeepSeek** (`deepseek-v4-flash`) — training knowledge, strict JSON mode.
+   - **OpenAI** (`gpt-5-mini`) — training knowledge, strict JSON mode (`response_format`).
+   One source failing (bad key, timeout, rate limit) is captured and skipped — it can't sink the batch. The button hint shows which sources will run (e.g. "Gemini + Tavily 🌐 + DeepSeek").
+2. **Gemini master consolidation** — the combined raw pile (web snippets + model answers) goes **only to Gemini**, which dedupes near-identical wordings, drops off-topic noise, and tags each surviving question with a **category** (Behavioral / System Design / Coding / Domain), **difficulty** (Easy / Medium / Hard), and **frequency** (High / Med / Low). Those show as colored badges on each question and sync to the Sheet.
+
+Gemini alone is enough — the other three are optional extra sources. Only Resume Matcher and the *area breakdown* use Gemini directly (no scan).
+
+#### Gemini model cascade
+
+Every Gemini call (matching, question generation, consolidation) walks an ordered six-model priority list — `gemini-3.1-pro` → `gemini-3.5-flash` → `gemini-3-flash` → `gemini-2.5-pro` → `gemini-2.5-flash` → `gemini-2.5-flash-lite` — with a **10-second timeout per attempt**. It drops to the next tier on rate-limit (429), server-busy (503), model-unavailable (404/400), timeout, or an empty/malformed response; a genuine auth error (401/403) surfaces immediately instead of burning all six tiers.
+
+> **Notes on this build vs. the original spec:** (1) The spec's model IDs (`deepseek-chat`, `gpt-4o-mini`, `gemini-2.5-flash`, and some of the cascade tiers) are retired or being retired as of this writing, and several of the newer Gemini tiers may not be live for every key/region. That's handled by design — a 404 is treated as retryable, so an unavailable tier is skipped rather than dead-ending — and every non-Gemini model name is a user-editable field. (2) Keys are stored in `chrome.storage.local` (matching the rest of the extension) rather than the spec's `chrome.storage.sync` — `local` keeps API keys on this one device instead of replicating them to every Chrome you're signed into, the safer default for secrets. Switch the `chrome.storage.local` calls to `chrome.storage.sync` in `options.js`/`sidepanel.js` if you specifically want cross-device sync. (3) Grok and Perplexity are excluded per the spec; Tavily is the live-web-search source.
+
+### Syncing to Google Sheets
+
+With a webhook URL configured (see above), Interview Prep writes to its **own tab per company** in the same sheet (e.g. a "Meta" tab, an "Amazon" tab), separate from Resume Matcher's shared "Job Match Log" tab — auto-created, auto-named. Checking a box syncs automatically (debounced) and **💾 Save Progress to Sheet** syncs immediately. Each sync fully replaces that company tab's rows with the current state, so re-syncing never piles up duplicates the way a naive append would.
+
+The company tab now also carries **Category / Difficulty / Frequency** columns per question (from the consolidation pass). **Any time `google-apps-script.js` changes** — including this column addition — re-paste it into your Apps Script editor and redeploy: **Deploy → Manage deployments → edit (pencil) → New version → Deploy**. You don't need a new URL, just a new version of the same deployment; the webhook URL in Settings stays the same. (An earlier version also had two now-fixed bugs: it treated every save as interview-prep data — dropping Resume Matcher's ATS/Chance/Missing-Skills columns — and appended duplicate rows on every checkbox toggle instead of replacing them.)
 
 ## Files
 
@@ -75,6 +102,7 @@ A second, independent tab next to Resume Matcher (switch via the header). It doe
 - `options.html` / `options.js` — API key, Sheets webhook URL, and master resume settings.
 - `sidepanel/` — both tabs (Resume Matcher and Interview Prep) live in the same `sidepanel.html`/`.js`/`.css`, switched via CSS `hidden` classes rather than separate pages. Resume Matcher's per-tab state (result, uploaded resume) persists to `chrome.storage.session`; Interview Prep's progress persists to `chrome.storage.local` keyed by job URL instead — see above for why.
 - `sidepanel/resumeParser.js` — extracts text from an uploaded PDF/DOCX. Loaded via dynamic `import()` only when you actually upload a file, so it never slows down opening the panel.
+- `sidepanel/aiProviders.js` — the parallel question-scan sources (Tavily live web + DeepSeek + OpenAI). `scanNonGeminiSources()` runs them via `Promise.allSettled` and returns the combined raw items for Gemini to consolidate. Loaded via dynamic `import()` only when a scan actually runs.
 - `content/content.js` — injected on demand (not persistent) to extract job description text from the panel's own bound tab. Clones the matched container, strips scripts/styles/nav/footer/forms/ads before reading text, and caps it at 15,000 characters — keeps the Gemini prompt lean and avoids billing tokens for page chrome.
 - `lib/pdfjs/` — a local copy of Mozilla's PDF.js (not loaded from a CDN — Manifest V3 blocks executing remotely-fetched code, so it has to ship inside the extension).
 - `google-apps-script.js` — paste into your Google Sheet's Apps Script editor to receive the webhook and append rows.
