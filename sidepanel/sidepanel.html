@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Job Match AI</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        Job Match AI
+      </div>
+      <button id="openOptions" class="icon-btn" title="Settings">⚙</button>
+    </header>
+
+    <div class="tab-switcher">
+      <button class="tab-btn active" id="tabBtnMatcher" data-tab="matcher" type="button">Resume Matcher</button>
+      <button class="tab-btn" id="tabBtnPrep" data-tab="prep" type="button">Interview Prep</button>
+    </div>
+
+    <div id="setupBanner" class="setup-banner hidden">
+      <span>Add your Gemini API key and resume to get started.</span>
+      <button id="setupBannerBtn">Open Settings</button>
+    </div>
+
+    <main class="content">
+      <div id="matcherView" class="tab-view">
+      <div id="warningsBanner" class="warnings-banner hidden"></div>
+
+      <!-- DASHBOARD -->
+      <section class="dashboard" id="dashboard">
+        <div id="glitterLayer" class="glitter-layer"></div>
+
+        <svg width="0" height="0" style="position:absolute">
+          <defs>
+            <linearGradient id="gaugeZones" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#f43f5e" stop-opacity="0.4" />
+              <stop offset="50%" stop-color="#f43f5e" stop-opacity="0.4" />
+              <stop offset="50%" stop-color="#f5b942" stop-opacity="0.4" />
+              <stop offset="75%" stop-color="#f5b942" stop-opacity="0.4" />
+              <stop offset="75%" stop-color="#22c55e" stop-opacity="0.4" />
+              <stop offset="100%" stop-color="#22c55e" stop-opacity="0.4" />
+            </linearGradient>
+          </defs>
+        </svg>
+
+        <div class="gauges-row">
+          <div class="gauge-card" id="atsGaugeCard">
+            <svg viewBox="0 0 200 120" class="gauge-svg">
+              <path d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-track" />
+              <g class="gauge-ticks">
+                <line x1="39.13" y1="90.22" x2="23.92" y2="85.28" />
+                <text x="10.6" y="80.95" text-anchor="start">10</text>
+                <line x1="62.38" y1="58.22" x2="52.98" y2="45.28" />
+                <text x="44.75" y="33.95" text-anchor="middle">30</text>
+                <line x1="119.78" y1="49.13" x2="124.72" y2="33.92" />
+                <text x="129.05" y="20.6" text-anchor="middle">60</text>
+                <line x1="160.87" y1="90.22" x2="176.08" y2="85.28" />
+                <text x="189.4" y="80.95" text-anchor="end">90</text>
+              </g>
+              <path id="atsGaugeArc" d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-arc" />
+              <line id="atsGaugeNeedle" x1="100" y1="110" x2="100" y2="40" class="gauge-needle" />
+              <circle cx="100" cy="110" r="6" class="gauge-pivot" />
+            </svg>
+            <div class="gauge-label">
+              <div id="atsScoreValue" class="gauge-value">--</div>
+              <div class="gauge-caption">ATS Score</div>
+            </div>
+          </div>
+
+          <div class="gauge-card" id="chanceGaugeCard">
+            <svg viewBox="0 0 200 120" class="gauge-svg">
+              <path d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-track" />
+              <g class="gauge-ticks">
+                <line x1="39.13" y1="90.22" x2="23.92" y2="85.28" />
+                <text x="10.6" y="80.95" text-anchor="start">10</text>
+                <line x1="62.38" y1="58.22" x2="52.98" y2="45.28" />
+                <text x="44.75" y="33.95" text-anchor="middle">30</text>
+                <line x1="119.78" y1="49.13" x2="124.72" y2="33.92" />
+                <text x="129.05" y="20.6" text-anchor="middle">60</text>
+                <line x1="160.87" y1="90.22" x2="176.08" y2="85.28" />
+                <text x="189.4" y="80.95" text-anchor="end">90</text>
+              </g>
+              <path id="chanceGaugeArc" d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-arc" />
+              <line id="chanceGaugeNeedle" x1="100" y1="110" x2="100" y2="40" class="gauge-needle" />
+              <circle cx="100" cy="110" r="6" class="gauge-pivot" />
+            </svg>
+            <div class="gauge-label">
+              <div id="chanceValue" class="gauge-value">--</div>
+              <div class="gauge-caption">Chance of Getting Job</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="jobIdentity" class="job-identity hidden">
+          <div id="jobRoleTitle" class="job-role-title">--</div>
+          <div id="jobCompanyName" class="job-company-name">--</div>
+        </div>
+      </section>
+
+      <!-- ACTIONS -->
+      <section class="actions-row">
+        <button id="analyzeBtn" class="primary-btn">Analyze Current Page</button>
+        <button id="reanalyzeBtn" class="secondary-btn" disabled>Re-Analyze Match</button>
+      </section>
+
+      <section class="actions-row">
+        <button id="uploadResumeBtn" class="secondary-btn" title="Use a PDF/Word resume for this job only">📄 Upload Resume</button>
+        <button id="saveSheetsBtn" class="secondary-btn" disabled>💾 Save to Google Sheets</button>
+      </section>
+      <input type="file" id="resumeFileInput" accept=".pdf,.docx" class="hidden" />
+
+      <div id="resumeSourceLine" class="resume-source-line hidden">
+        <span id="resumeSourceText"></span>
+        <button id="clearResumeOverrideBtn" class="link-btn" type="button">Use master resume instead</button>
+      </div>
+
+      <div id="statusLine" class="status-line"></div>
+
+      <!-- RESUME DRAWER -->
+      <section class="drawer">
+        <button id="drawerToggle" class="drawer-toggle">
+          <span>✎ Quick Resume Edit</span>
+          <span id="drawerChevron">▾</span>
+        </button>
+        <div id="drawerBody" class="drawer-body hidden">
+          <textarea id="resumeQuickEdit" placeholder="Your master resume..."></textarea>
+          <div class="drawer-actions">
+            <button id="saveResumeQuick" class="secondary-btn small">Save Resume</button>
+            <span id="resumeSavedTag" class="saved-tag hidden">Saved ✓</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- REPORT -->
+      <section id="report" class="report hidden">
+
+        <div class="report-block rb-rose" id="missingSkillsBlock">
+          <button class="block-toggle" type="button" aria-expanded="true">
+            <h3>Missing Skills</h3>
+            <span class="block-chevron">▾</span>
+          </button>
+          <div class="block-body">
+            <div class="pill-row" id="missingSkillsList"></div>
+          </div>
+        </div>
+
+        <div class="report-block rb-teal">
+          <button class="block-toggle" type="button" aria-expanded="true">
+            <h3>Resume Optimization</h3>
+            <span class="block-chevron">▾</span>
+          </button>
+          <div class="block-body">
+            <div class="two-col">
+              <div>
+                <h4 class="good">Add</h4>
+                <div class="pill-row" id="addSkillsList"></div>
+              </div>
+              <div>
+                <h4 class="bad">Remove</h4>
+                <div class="pill-row" id="removeSkillsList"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="report-block rb-blue">
+          <button class="block-toggle" type="button" aria-expanded="true">
+            <h3>Stage 1 — Attention Test (6-second scan)</h3>
+            <span class="block-chevron">▾</span>
+          </button>
+          <div class="block-body">
+            <div class="two-col">
+              <div>
+                <h4 class="good">Stands Out</h4>
+                <ul id="standsOutList" class="list"></ul>
+              </div>
+              <div>
+                <h4 class="bad">Forgettable</h4>
+                <ul id="forgettableList" class="list"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="report-block rb-violet">
+          <button class="block-toggle" type="button" aria-expanded="true">
+            <h3>Stage 2 — Recruiter Mindset Breakdown</h3>
+            <span class="block-chevron">▾</span>
+          </button>
+          <div class="block-body">
+            <div class="two-col">
+              <div>
+                <h4 class="bad">Weak Areas</h4>
+                <ul id="weakAreasList" class="list"></ul>
+              </div>
+              <div>
+                <h4 class="bad">Credibility Gaps</h4>
+                <ul id="credibilityGapsList" class="list"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="report-block rb-amber">
+          <button class="block-toggle" type="button" aria-expanded="true">
+            <h3>Stage 3 — Technical Gap Table</h3>
+            <span class="block-chevron">▾</span>
+          </button>
+          <div class="block-body">
+            <table class="gap-table">
+              <thead>
+                <tr><th>Technology</th><th>Context</th><th>Severity</th></tr>
+              </thead>
+              <tbody id="techGapTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="report-block rb-emerald">
+          <button class="block-toggle" type="button" aria-expanded="true">
+            <h3>Why You're a Good Fit</h3>
+            <span class="block-chevron">▾</span>
+          </button>
+          <div class="block-body">
+            <ol id="goodFitList" class="list numbered"></ol>
+            <ol id="goodFitListMore" class="list numbered hidden"></ol>
+            <button id="goodFitToggle" class="expand-toggle hidden" type="button" aria-expanded="false">Show more ▾</button>
+          </div>
+        </div>
+
+        <div class="report-block rb-orange">
+          <button class="block-toggle" type="button" aria-expanded="true">
+            <h3>Interview &amp; Role Prep</h3>
+            <span class="block-chevron">▾</span>
+          </button>
+          <div class="block-body">
+            <h4 class="neutral">Problem This Role Solves</h4>
+            <ul id="problemSolvedList" class="list"></ul>
+
+            <h4 class="neutral">What They'll Expect From You</h4>
+            <ul id="expectationsList" class="list"></ul>
+
+            <h4 class="neutral">Where To Focus Prep</h4>
+            <ul id="focusAreasList" class="list"></ul>
+
+            <h4 class="neutral">Keywords To Use In The Interview</h4>
+            <div class="pill-row" id="interviewKeywordsList"></div>
+          </div>
+        </div>
+
+        <div class="report-block rb-indigo">
+          <button class="block-toggle" type="button" aria-expanded="true">
+            <h3>Company Insights</h3>
+            <span class="block-chevron">▾</span>
+          </button>
+          <div class="block-body">
+            <div class="company-stat-row">
+              <div class="company-stat">
+                <span class="company-stat-label">Employees</span>
+                <span id="companyEmployees" class="company-stat-value">--</span>
+              </div>
+              <div class="company-stat">
+                <span class="company-stat-label">Years in Market</span>
+                <span id="companyYears" class="company-stat-value">--</span>
+              </div>
+              <div class="company-stat">
+                <span class="company-stat-label">Glassdoor Rating</span>
+                <span id="companyGlassdoor" class="company-stat-value">--</span>
+              </div>
+            </div>
+
+            <h4 class="neutral">Core Business</h4>
+            <ul id="companyCoreBusinessList" class="list"></ul>
+
+            <h4 class="neutral">Typical Interview Process</h4>
+            <ul id="companyInterviewList" class="list"></ul>
+
+            <h4 class="neutral">Work Environment</h4>
+            <ul id="companyEnvironmentList" class="list"></ul>
+
+            <p id="companyConfidenceNote" class="company-confidence-note"></p>
+          </div>
+        </div>
+
+      </section>
+
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">📄</div>
+        <p>Open a job posting, then click <strong>Analyze Current Page</strong>.</p>
+      </div>
+      </div>
+
+      <!-- INTERVIEW PREP TAB -->
+      <div id="prepView" class="tab-view hidden">
+        <div id="prepEmptyState" class="empty-state">
+          <div class="empty-icon">🎯</div>
+          <p>Open a job posting, then click <strong>Generate Interview Prep</strong>.</p>
+        </div>
+
+        <button id="generatePrepBtn" class="primary-btn full-width">🎯 Generate Interview Prep</button>
+        <div id="prepStatusLine" class="status-line"></div>
+
+        <div id="prepDashboard" class="prep-dashboard hidden">
+          <button id="regeneratePrepBtn" class="link-btn prep-regenerate-btn" type="button">🔄 Regenerate breakdown</button>
+
+          <div class="prep-progress-card">
+            <div class="prep-progress-head">
+              <span>Overall Prep Progress</span>
+              <span id="prepProgressValue">0%</span>
+            </div>
+            <div class="progress-track">
+              <div id="prepProgressFill" class="progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="prep-donut-card">
+            <svg viewBox="0 0 120 120" class="prep-donut-svg" id="prepDonutSvg"></svg>
+            <div class="prep-donut-legend" id="prepDonutLegend"></div>
+          </div>
+        </div>
+
+        <div id="prepAreasList" class="prep-areas-list"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
