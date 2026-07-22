@@ -367,7 +367,6 @@ let prepJobUrl = "";
 // company-specific Google Sheet tab, so it needs to be reliable on its own.
 let prepCompanyName = "";
 let prepJobTitle = "";
-const PREP_STATE_KEY_PREFIX = "interviewPrep:";
 
 const TAB_STATE_KEY_PREFIX = "jobMatchState:";
 
@@ -1188,21 +1187,10 @@ function normalizeAreas(rawAreas) {
   return mapped;
 }
 
-function prepStorageKey(url) {
-  return PREP_STATE_KEY_PREFIX + url;
-}
-
-async function loadPrepStateForUrl(url) {
-  if (!url) return null;
-  const key = prepStorageKey(url);
-  const stored = await chrome.storage.session.get(key);
-  return stored[key] || null;
-}
-
 async function savePrepState() {
   if (!prepJobUrl || !currentTabId) return;
   await chrome.storage.session.set({
-    [prepStorageKey(prepJobUrl)]: {
+    [prepJobUrl]: {
       areas: prepAreas,
       recruiterNotes: prepRecruiterNotes,
       companyName: prepCompanyName,
@@ -1883,11 +1871,7 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
   }
 }
 
-// Interview Prep now prefers a fresh generation from the current page and a
-// durable sheet sync rather than rehydrating old browser-cached questions.
-async function restorePrepStateForCurrentTab() {
-  return;
-}
+
 
 generatePrepBtn.addEventListener("click", () => runGeneratePrep());
 updateFocusBtn?.addEventListener("click", () => runGeneratePrep({ forceRegenerate: true }));
