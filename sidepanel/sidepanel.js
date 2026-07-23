@@ -290,6 +290,20 @@ const warningsBanner = document.getElementById("warningsBanner");
 const tabButtons = document.querySelectorAll(".tab-btn");
 const matcherView = document.getElementById("matcherView");
 const prepView = document.getElementById("prepView");
+const applyView = document.getElementById("applyView");
+const scanView = document.getElementById("scanView");
+const tabViewsByName = { matcher: matcherView, prep: prepView, apply: applyView, scan: scanView };
+const tabButtonsByName = {};
+tabButtons.forEach((btn) => { tabButtonsByName[btn.dataset.tab] = btn; });
+const coverLetterBtn = document.getElementById("coverLetterBtn");
+const checkSalaryBtn = document.getElementById("checkSalaryBtn");
+const applyStatusLine = document.getElementById("applyStatusLine");
+const salaryResult = document.getElementById("salaryResult");
+const salaryResultBody = document.getElementById("salaryResultBody");
+const scanAndFilterBtn = document.getElementById("scanAndFilterBtn");
+const saveScanBtn = document.getElementById("saveScanBtn");
+const scanStatusLine = document.getElementById("scanStatusLine");
+const scanResultsList = document.getElementById("scanResultsList");
 
 // ---------- Interview Prep DOM refs ----------
 const generatePrepBtn = document.getElementById("generatePrepBtn");
@@ -403,6 +417,7 @@ async function restoreTabState() {
     reanalyzeBtn.disabled = !lastJobText;
   }
   refreshSaveSheetsButton();
+  refreshApplyButtons();
 }
 
 async function persistTabSessionState() {
@@ -432,7 +447,8 @@ async function init() {
     "openaiModel",
     "perplexityKey",
     "perplexityModel",
-    "prepSourceSelection"
+    "prepSourceSelection",
+    "visibleTabs"
   ]);
   apiKey = stored.geminiApiKey || "";
   masterResume = stored.masterResume || "";
@@ -445,6 +461,7 @@ async function init() {
   perplexityKey = stored.perplexityKey || "";
   perplexityModel = stored.perplexityModel || "sonar";
   prepSourceSelection = { ...prepSourceSelection, ...(stored.prepSourceSelection || {}) };
+  applyTabVisibility(stored.visibleTabs);
   resumeQuickEdit.value = masterResume;
   // Restore per-tab state (including any uploaded-resume override) before
   // computing button states, so a tab with an override but no saved master
@@ -502,6 +519,7 @@ function refreshSetupBanner() {
   const missing = !apiKey || !hasUsableResume();
   setupBanner.classList.toggle("hidden", !missing);
   analyzeBtn.disabled = missing;
+  refreshScanButton();
 }
 
 function refreshResumeSourceLine() {
@@ -531,14 +549,48 @@ openOptionsBtn.addEventListener("click", () => chrome.runtime.openOptionsPage())
 setupBannerBtn.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
 // ---------- Tab switcher ----------
+function activateTab(target) {
+  tabButtons.forEach((b) => b.classList.toggle("active", b.dataset.tab === target));
+  Object.entries(tabViewsByName).forEach(([name, view]) => view.classList.toggle("hidden", name !== target));
+  if (target === "apply") refreshApplyButtons();
+  if (target === "scan") refreshScanButton();
+}
+
 tabButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    tabButtons.forEach((b) => b.classList.toggle("active", b === btn));
-    const isPrep = btn.dataset.tab === "prep";
-    matcherView.classList.toggle("hidden", isPrep);
-    prepView.classList.toggle("hidden", !isPrep);
-  });
+  btn.addEventListener("click", () => activateTab(btn.dataset.tab));
 });
+
+// Settings lets the user hide tabs they don't use — hide their buttons here,
+// and if the currently active tab just got hidden, jump to the first tab
+// that's still visible so the panel never ends up showing nothing.
+function applyTabVisibility(visibleTabs) {
+  const visible = { scan: true, matcher: true, prep: true, apply: true, ...(visibleTabs || {}) };
+  const anyVisible = Object.values(visible).some(Boolean);
+
+  Object.entries(tabButtonsByName).forEach(([name, btn]) => {
+    btn.classList.toggle("hidden", !anyVisible ? false : !visible[name]);
+  });
+
+  const activeBtn = Array.from(tabButtons).find((b) => b.classList.contains("active"));
+  if (!activeBtn || activeBtn.classList.contains("hidden")) {
+    const firstVisible = Array.from(tabButtons).find((b) => !b.classList.contains("hidden"));
+    if (firstVisible) activateTab(firstVisible.dataset.tab);
+  }
+}
+
+function refreshScanButton() {
+  scanAndFilterBtn.disabled = !(apiKey && effectiveResume());
+  scanAndFilterBtn.title = scanAndFilterBtn.disabled ? "Add your Gemini API key and resume in Settings first." : "";
+}
+
+function refreshApplyButtons() {
+  const ready = !!(apiKey && lastResult && lastJobText && effectiveResume());
+  coverLetterBtn.disabled = !ready;
+  checkSalaryBtn.disabled = !ready;
+  const title = ready ? "" : "Run Resume Matcher analysis on this job first.";
+  coverLetterBtn.title = title;
+  checkSalaryBtn.title = title;
+}
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
@@ -555,6 +607,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.openaiModel) openaiModel = changes.openaiModel.newValue || "gpt-5-mini";
   if (changes.perplexityKey) perplexityKey = changes.perplexityKey.newValue || "";
   if (changes.perplexityModel) perplexityModel = changes.perplexityModel.newValue || "sonar";
+  if (changes.visibleTabs) applyTabVisibility(changes.visibleTabs.newValue);
   refreshSetupBanner();
   refreshSaveSheetsButton();
   refreshSourcePicker();
@@ -1102,6 +1155,7 @@ async function runAnalysis({ reextract }) {
     setBusy(false);
     reanalyzeBtn.disabled = !lastJobText;
     refreshSaveSheetsButton();
+    refreshApplyButtons();
   }
 }
 
@@ -1880,5 +1934,444 @@ savePrepSheetsBtn?.addEventListener("click", () => savePrepProgressToSheets({ si
 analyzeBtn.addEventListener("click", () => runAnalysis({ reextract: true }));
 reanalyzeBtn.addEventListener("click", () => runAnalysis({ reextract: false }));
 saveSheetsBtn.addEventListener("click", saveResultToSheets);
+
+// ---------- Cover Letter & Salary ----------
+const COVER_LETTER_SYSTEM_PROMPT = `You are an expert career coach writing a concise, professional cover letter for a specific job application.
+
+You will be given a candidate's MASTER RESUME and a JOB DESCRIPTION. Write a genuine, tailored one-page cover letter — never use placeholder text like "[Your Name]" or "[Company Name]"; extract the candidate's actual name from the resume and the company/role from the job description, and use them directly. If the candidate's name truly cannot be found in the resume, omit it (return an empty string) rather than inventing or placeholding it.
+
+Structure:
+- opening_paragraph: hook the reader, state the role and genuine interest, 2-3 sentences.
+- key_points: exactly 3 to 5 short, punchy bullet points, each a specific, concrete selling point connecting the candidate's real resume experience to this job's actual requirements (use real numbers/technologies/outcomes from the resume, not generic claims).
+- closing_paragraph: confident close with a call to action, 2-3 sentences.
+- candidate_name: the candidate's full name as found in the resume, or empty string if genuinely absent.
+
+Keep the whole letter fitting on one page (roughly 250-350 words total). Be specific, not generic. No markdown, no placeholders.
+
+Respond with ONLY a valid JSON object matching the schema.`;
+
+const COVER_LETTER_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    candidate_name: { type: "STRING" },
+    opening_paragraph: { type: "STRING" },
+    key_points: { type: "ARRAY", items: { type: "STRING" } },
+    closing_paragraph: { type: "STRING" }
+  },
+  required: ["candidate_name", "opening_paragraph", "key_points", "closing_paragraph"]
+};
+
+async function generateCoverLetter() {
+  if (!lastResult || !lastJobText) return;
+  coverLetterBtn.disabled = true;
+  applyStatusLine.classList.remove("err");
+  applyStatusLine.textContent = "Writing your cover letter...";
+  try {
+    const userPrompt = `MASTER RESUME:\n"""\n${effectiveResume()}\n"""\n\nJOB DESCRIPTION:\n"""\n${lastJobText}\n"""\n\nCOMPANY: ${lastResult.company_name || ""}\nROLE: ${lastResult.job_title || ""}`;
+    const data = await callGeminiWithFallback(COVER_LETTER_SYSTEM_PROMPT, userPrompt, COVER_LETTER_SCHEMA, (m) => {
+      applyStatusLine.textContent = `Busy — switching to ${m}...`;
+    });
+    buildCoverLetterPdf(data);
+    applyStatusLine.textContent = "Cover letter downloaded.";
+    applyStatusLine.classList.add("ok");
+  } catch (err) {
+    console.error(err);
+    applyStatusLine.textContent = isRetryableError(err) ? formatModelRetryMessage(err, "Gemini") : (err.message || "Couldn't generate cover letter.");
+    applyStatusLine.classList.add("err");
+  } finally {
+    refreshApplyButtons();
+  }
+}
+
+function buildCoverLetterPdf(data) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const marginX = 56;
+  const maxWidth = 612 - marginX * 2;
+  const lineGap = 16;
+  let y = 72;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text(new Date().toLocaleDateString(), marginX, y);
+  y += lineGap * 2;
+
+  doc.text(`Re: Application for ${lastResult.job_title || "the role"} at ${lastResult.company_name || "your company"}`, marginX, y);
+  y += lineGap * 2;
+
+  doc.text("Dear Hiring Manager,", marginX, y);
+  y += lineGap * 1.5;
+
+  const writeParagraph = (text) => {
+    const lines = doc.splitTextToSize(text, maxWidth);
+    doc.text(lines, marginX, y);
+    y += lines.length * lineGap + lineGap * 0.5;
+  };
+
+  writeParagraph(data.opening_paragraph || "");
+
+  (data.key_points || []).forEach((point) => {
+    const lines = doc.splitTextToSize(`•  ${point}`, maxWidth - 14);
+    doc.text(lines, marginX + 14, y);
+    y += lines.length * lineGap;
+  });
+  y += lineGap * 0.5;
+
+  writeParagraph(data.closing_paragraph || "");
+
+  y += lineGap * 0.5;
+  doc.text("Sincerely,", marginX, y);
+  y += lineGap * 1.5;
+  if (data.candidate_name) doc.text(data.candidate_name, marginX, y);
+
+  const safe = (s) => (s || "").replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "Unknown";
+  doc.save(`Cover_Letter_${safe(lastResult.company_name)}_${safe(lastResult.job_title)}.pdf`);
+}
+
+const SALARY_SYSTEM_PROMPT = `You are a compensation analyst with broad knowledge of global tech salary benchmarks, cost of living, taxation, and market standards.
+
+Given a JOB DESCRIPTION (which states or implies a location) and role/company context — plus optional live web search snippets if provided — estimate a realistic salary for this specific role at this specific company/location, informed by market standards, typical tax burden, and inflation for that location.
+
+Rules:
+- Identify the job's location (city/country) from the posting; if unclear, assume Poland.
+- local_currency is that location's actual currency (e.g. "PLN" for Poland, "USD" for the US, etc).
+- Give monthly and annual GROSS figures in local currency, in PLN, and in EUR. If local currency is already PLN or EUR, set that duplicate currency's four number fields to 0 and explain why in basis_note — never show identical numbers twice under different labels.
+- benefits: 4-8 realistic, specific benefits typical for this role/company/location (health, equity, remote policy, learning budget, etc) — no vague filler.
+- negotiation_tips: 3-5 concrete negotiation angles specific to this role and situation (leverage points, what to ask for beyond base pay).
+- basis_note: 1-2 sentences on what this estimate is grounded in — it's an informed estimate, not a live quote.
+
+Respond with ONLY a valid JSON object matching the schema.`;
+
+const SALARY_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    location: { type: "STRING" },
+    local_currency: { type: "STRING" },
+    monthly_local: { type: "NUMBER" },
+    annual_local: { type: "NUMBER" },
+    monthly_pln: { type: "NUMBER" },
+    annual_pln: { type: "NUMBER" },
+    monthly_eur: { type: "NUMBER" },
+    annual_eur: { type: "NUMBER" },
+    benefits: { type: "ARRAY", items: { type: "STRING" } },
+    negotiation_tips: { type: "ARRAY", items: { type: "STRING" } },
+    basis_note: { type: "STRING" }
+  },
+  required: ["location", "local_currency", "monthly_local", "annual_local", "monthly_pln", "annual_pln", "monthly_eur", "annual_eur", "benefits", "negotiation_tips", "basis_note"]
+};
+
+async function checkSalary() {
+  if (!lastResult || !lastJobText) return;
+  checkSalaryBtn.disabled = true;
+  applyStatusLine.classList.remove("err");
+  applyStatusLine.textContent = "Estimating salary...";
+  salaryResult.classList.add("hidden");
+  try {
+    let webContext = "";
+    if (tavilyKey) {
+      try {
+        const { scanTavily } = await import(chrome.runtime.getURL("sidepanel/aiProviders.js"));
+        const snippets = await scanTavily({
+          apiKey: tavilyKey,
+          company: lastResult.company_name,
+          jobTitle: lastResult.job_title,
+          areaTitle: "salary compensation range benefits"
+        });
+        if (snippets.length) webContext = `\n\nLIVE WEB SEARCH SNIPPETS (salary/benefits related):\n"""\n${snippets.slice(0, 8).join("\n")}\n"""`;
+      } catch {
+        // Best-effort — Gemini still answers from its own knowledge if this fails.
+      }
+    }
+
+    const userPrompt = `COMPANY: ${lastResult.company_name || "Unknown"}\nROLE: ${lastResult.job_title || "Unknown"}\n\nJOB DESCRIPTION:\n"""\n${lastJobText}\n"""${webContext}`;
+    const data = await callGeminiWithFallback(SALARY_SYSTEM_PROMPT, userPrompt, SALARY_SCHEMA, (m) => {
+      applyStatusLine.textContent = `Busy — switching to ${m}...`;
+    });
+    renderSalaryResult(data);
+    applyStatusLine.textContent = "Salary estimate ready.";
+    applyStatusLine.classList.add("ok");
+  } catch (err) {
+    console.error(err);
+    applyStatusLine.textContent = isRetryableError(err) ? formatModelRetryMessage(err, "Gemini") : (err.message || "Couldn't estimate salary.");
+    applyStatusLine.classList.add("err");
+  } finally {
+    refreshApplyButtons();
+  }
+}
+
+function fmtMoney(amount, currency) {
+  if (!amount) return null;
+  return `${Math.round(amount).toLocaleString()} ${currency}`;
+}
+
+function renderSalaryResult(data) {
+  salaryResultBody.innerHTML = "";
+  const rows = [
+    [data.local_currency || "Local", data.local_currency, data.monthly_local, data.annual_local],
+    ["PLN", "PLN", data.monthly_pln, data.annual_pln],
+    ["EUR", "EUR", data.monthly_eur, data.annual_eur]
+  ];
+
+  rows.forEach(([label, currency, monthly, annual]) => {
+    const m = fmtMoney(monthly, currency);
+    const a = fmtMoney(annual, currency);
+    if (!m && !a) return;
+    const row = document.createElement("div");
+    row.className = "prep-checkbox-label";
+    row.style.justifyContent = "space-between";
+    row.innerHTML = `<strong>${label}</strong><span>${m || "—"} / mo &nbsp;·&nbsp; ${a || "—"} / yr</span>`;
+    salaryResultBody.appendChild(row);
+  });
+
+  const addList = (title, items) => {
+    if (!items?.length) return;
+    const h = document.createElement("div");
+    h.style.fontWeight = "700";
+    h.style.marginTop = "8px";
+    h.textContent = title;
+    salaryResultBody.appendChild(h);
+    const ul = document.createElement("ul");
+    ul.style.margin = "4px 0 0 16px";
+    items.forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      ul.appendChild(li);
+    });
+    salaryResultBody.appendChild(ul);
+  };
+
+  addList("Benefits", data.benefits);
+  addList("Negotiation Tips", data.negotiation_tips);
+
+  if (data.basis_note) {
+    const note = document.createElement("div");
+    note.style.marginTop = "8px";
+    note.style.fontSize = "11px";
+    note.style.color = "var(--muted)";
+    note.textContent = data.basis_note;
+    salaryResultBody.appendChild(note);
+  }
+
+  salaryResult.classList.remove("hidden");
+  salaryResult.open = true;
+}
+
+coverLetterBtn.addEventListener("click", generateCoverLetter);
+checkSalaryBtn.addEventListener("click", checkSalary);
+
+// ---------- Scan Jobs ----------
+let scanResults = [];
+
+const BULK_MATCH_SYSTEM_PROMPT = `You are a fast ATS matching engine. Given a candidate's resume and one job posting (title/company/description, which may be brief), return a realistic match percentage and exactly 7 key technical skills/technologies this posting asks for.
+
+Rules:
+- match_percent: whole number 0-100 reflecting realistic fit between resume and posting.
+- tech_stack: exactly 7 short tags (e.g. "React", "AWS", "Kubernetes") — the most specific, concrete technologies/skills named in the posting. If the posting text is too short to find 7 distinct technical items, fill remaining slots with the closest relevant domain/soft skills implied by the title — never leave fewer than 7.
+
+Respond with ONLY a valid JSON object matching the schema.`;
+
+const BULK_MATCH_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    match_percent: { type: "NUMBER" },
+    tech_stack: { type: "ARRAY", items: { type: "STRING" } }
+  },
+  required: ["match_percent", "tech_stack"]
+};
+
+function scanJobListOnActiveTab() {
+  return new Promise((resolve, reject) => {
+    let tab;
+    let settled = false;
+
+    const run = async () => {
+      if (currentTabId != null) tab = await chrome.tabs.get(currentTabId).catch(() => null);
+      // The bound tab might exist but no longer be the job listings page (or
+      // any http(s) page at all) — fall back to whatever tab is actually
+      // active in this window rather than failing on a stale binding.
+      if (!tab || !/^https?:\/\//.test(tab.url || "")) {
+        [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      }
+      if (!tab?.id || !/^https?:\/\//.test(tab.url || "")) {
+        reject(new Error("Open a job listings page in this tab first."));
+        return;
+      }
+
+      const listener = (message, sender) => {
+        if (message?.type === "JOB_MATCH_LIST_SCAN_RESULT" && sender.tab?.id === tab.id) {
+          settled = true;
+          chrome.runtime.onMessage.removeListener(listener);
+          resolve(Array.isArray(message.jobs) ? message.jobs : []);
+        }
+      };
+      chrome.runtime.onMessage.addListener(listener);
+
+      chrome.scripting
+        .executeScript({ target: { tabId: tab.id }, files: ["content/jobListScan.js"] })
+        .catch((err) => {
+          chrome.runtime.onMessage.removeListener(listener);
+          reject(new Error(`Could not read this page: ${err.message}`));
+        });
+
+      setTimeout(() => {
+        if (!settled) {
+          chrome.runtime.onMessage.removeListener(listener);
+          reject(new Error("Timed out scanning the page — the list may not have loaded, or this site isn't supported yet."));
+        }
+      }, 20000);
+    };
+
+    run();
+  });
+}
+
+async function runScanAndFilter() {
+  if (!apiKey || !effectiveResume()) return;
+  scanAndFilterBtn.disabled = true;
+  saveScanBtn.disabled = true;
+  scanStatusLine.classList.remove("err");
+  scanStatusLine.textContent = "Reading job list from this page...";
+  scanResultsList.innerHTML = "";
+  scanResults = [];
+
+  try {
+    const jobs = await scanJobListOnActiveTab();
+    if (jobs.length === 0) {
+      scanStatusLine.textContent = "No jobs found on this page — is it a job listings page?";
+      scanStatusLine.classList.add("err");
+      return;
+    }
+
+    const resume = effectiveResume();
+    const matched = [];
+    for (let i = 0; i < jobs.length; i++) {
+      const job = jobs[i];
+      scanStatusLine.textContent = `Scoring ${i + 1}/${jobs.length}: ${job.title}...`;
+      try {
+        const userPrompt = `RESUME:\n"""\n${resume}\n"""\n\nJOB TITLE: ${job.title}\nCOMPANY: ${job.company}\nJOB TEXT:\n"""\n${job.description || "(no description available)"}\n"""`;
+        const data = await callGeminiWithFallback(BULK_MATCH_SYSTEM_PROMPT, userPrompt, BULK_MATCH_SCHEMA);
+        const matchPercent = Math.round(Number(data.match_percent) || 0);
+        if (matchPercent > 50) {
+          matched.push({
+            title: job.title,
+            company: job.company,
+            url: job.url,
+            applyUrl: job.applyUrl || job.url,
+            matchPercent,
+            techStack: (data.tech_stack || []).slice(0, 7),
+            checked: false
+          });
+        }
+      } catch (err) {
+        console.warn(`Scan: skipping "${job.title}" — ${err.message}`);
+      }
+    }
+
+    scanResults = matched;
+    renderScanResults();
+    scanStatusLine.textContent = matched.length
+      ? `${matched.length} of ${jobs.length} scanned jobs matched above 50%.`
+      : `Scanned ${jobs.length} jobs — none matched above 50%.`;
+    scanStatusLine.classList.add("ok");
+    saveScanBtn.disabled = matched.length === 0 || !sheetsWebhookUrl;
+  } catch (err) {
+    console.error(err);
+    scanStatusLine.textContent = err.message || "Couldn't scan this page.";
+    scanStatusLine.classList.add("err");
+  } finally {
+    scanAndFilterBtn.disabled = !(apiKey && effectiveResume());
+  }
+}
+
+function renderScanResults() {
+  scanResultsList.innerHTML = "";
+  scanResults.forEach((job, i) => {
+    const card = document.createElement("div");
+    card.className = "prep-area-card scan-job-card";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = job.checked;
+    checkbox.addEventListener("change", () => {
+      scanResults[i].checked = checkbox.checked;
+    });
+
+    const body = document.createElement("div");
+    body.style.flex = "1";
+    body.style.minWidth = "0";
+
+    const titleRow = document.createElement("div");
+    titleRow.style.display = "flex";
+    titleRow.style.justifyContent = "space-between";
+    titleRow.style.gap = "8px";
+
+    const titleLink = document.createElement("a");
+    titleLink.className = "scan-job-title";
+    titleLink.textContent = job.title;
+    titleLink.addEventListener("click", () => window.open(job.applyUrl, "_blank"));
+
+    const matchBadge = document.createElement("span");
+    matchBadge.className = "scan-job-match";
+    matchBadge.textContent = `${job.matchPercent}%`;
+
+    titleRow.append(titleLink, matchBadge);
+
+    const companyLine = document.createElement("div");
+    companyLine.className = "scan-job-company";
+    companyLine.textContent = job.company;
+
+    const tagsRow = document.createElement("div");
+    tagsRow.className = "prep-question-badges";
+    tagsRow.style.marginTop = "6px";
+    job.techStack.forEach((tech) => tagsRow.appendChild(makeQBadge(tech, "cat")));
+
+    body.append(titleRow, companyLine, tagsRow);
+    card.append(checkbox, body);
+    scanResultsList.appendChild(card);
+  });
+}
+
+async function saveScanResultsToSheet() {
+  if (!sheetsWebhookUrl || scanResults.length === 0) return;
+  saveScanBtn.disabled = true;
+  saveScanBtn.textContent = "Saving...";
+
+  const payload = {
+    type: "job_scan",
+    date: new Date().toISOString().slice(0, 10),
+    jobs: scanResults.map((job) => ({
+      title: job.title,
+      company: job.company,
+      url: job.url,
+      matchPercent: job.matchPercent,
+      status: job.checked ? "Applied" : "Pending"
+    }))
+  };
+
+  try {
+    await fetch(sheetsWebhookUrl, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    });
+    saveScanBtn.textContent = "✓ Saved";
+    scanStatusLine.textContent = "Saved to MatcherJobs sheet.";
+    scanStatusLine.classList.remove("err");
+    scanStatusLine.classList.add("ok");
+  } catch (err) {
+    console.error(err);
+    scanStatusLine.textContent = "Could not save to Sheets. Check the webhook URL.";
+    scanStatusLine.classList.add("err");
+  } finally {
+    setTimeout(() => {
+      saveScanBtn.textContent = "💾 Save";
+      saveScanBtn.disabled = scanResults.length === 0 || !sheetsWebhookUrl;
+    }, 2200);
+  }
+}
+
+scanAndFilterBtn.addEventListener("click", runScanAndFilter);
+saveScanBtn.addEventListener("click", saveScanResultsToSheet);
 
 init();

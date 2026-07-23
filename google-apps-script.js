@@ -1,8 +1,11 @@
 
 const MASTER_LOG_SHEET_NAME = "Job Match Log";
-const MASTER_LOG_HEADERS = ["Date", "Company Name", "Job Title", "ATS Score (%)", "Interview Chance (%)", "Missing Skills", "Job URL"];
+const MASTER_LOG_HEADERS = ["Date", "Company Name", "Job Title", "ATS Score (%)", "Interview Chance (%)", "Missing Skills", "Job URL", "Status"];
 
 const COMPANY_SHEET_HEADERS = ["Question"];
+
+const SCAN_JOBS_SHEET_NAME = "MatcherJobs";
+const SCAN_JOBS_HEADERS = ["Date", "Title", "Company", "URL", "Match %", "Status"];
 
 function sanitizeSheetName(name) {
   // Google Sheets tab names can't contain : \ / ? * [ ] and must be <= 100 chars.
@@ -20,6 +23,16 @@ function ensureHeaders(sheet, headers) {
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
     sheet.setFrozenRows(1);
+    return;
+  }
+  // Sheet already has a header row from before a column was added (e.g. the
+  // new Status column) — patch in any missing trailing headers in place
+  // rather than requiring the user to fix it by hand or losing existing rows.
+  const existingCount = sheet.getLastColumn();
+  if (existingCount < headers.length) {
+    const missing = headers.slice(existingCount);
+    sheet.getRange(1, existingCount + 1, 1, missing.length).setValues([missing]);
+    sheet.getRange(1, existingCount + 1, 1, missing.length).setFontWeight("bold");
   }
 }
 
@@ -33,7 +46,8 @@ function handleJobMatchLog(data) {
     data.atsScore ?? "",
     data.interviewChance ?? "",
     data.missingSkills || "",
-    data.jobUrl || ""
+    data.jobUrl || "",
+    data.status || "Applied"
   ]);
   return { status: "ok", sheet: sheet.getName() };
 }
@@ -65,10 +79,33 @@ function handleInterviewPrepSync(data) {
   return { status: "ok", sheet: sheet.getName(), rows: questionTexts.length };
 }
 
+function handleJobScanAppend(data) {
+  const sheet = getOrCreateSheet(SCAN_JOBS_SHEET_NAME);
+  ensureHeaders(sheet, SCAN_JOBS_HEADERS);
+
+  const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+  const rows = jobs.map((j) => [
+    data.date || "",
+    j.title || "",
+    j.company || "",
+    j.url || "",
+    j.matchPercent ?? "",
+    j.status || ""
+  ]);
+  if (rows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, SCAN_JOBS_HEADERS.length).setValues(rows);
+  }
+
+  return { status: "ok", sheet: sheet.getName(), rows: rows.length };
+}
+
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    const result = data.type === "interview_prep" ? handleInterviewPrepSync(data) : handleJobMatchLog(data);
+    let result;
+    if (data.type === "interview_prep") result = handleInterviewPrepSync(data);
+    else if (data.type === "job_scan") result = handleJobScanAppend(data);
+    else result = handleJobMatchLog(data);
     return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService

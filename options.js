@@ -28,6 +28,15 @@ const saveResumeBtn = document.getElementById("saveResume");
 const resumeStatus = document.getElementById("resumeStatus");
 const charCount = document.getElementById("charCount");
 
+const tabVisibilityStatus = document.getElementById("tabVisibilityStatus");
+const tabVisCheckboxes = {
+  scan: document.getElementById("tabVisScan"),
+  matcher: document.getElementById("tabVisMatcher"),
+  prep: document.getElementById("tabVisPrep"),
+  apply: document.getElementById("tabVisApply")
+};
+const DEFAULT_VISIBLE_TABS = { scan: true, matcher: true, prep: true, apply: true };
+
 function flashStatus(el, message, kind) {
   el.textContent = message;
   el.classList.remove("ok", "err");
@@ -50,9 +59,15 @@ async function loadSavedValues() {
     "openaiKey",
     "openaiModel",
     "perplexityKey",
-    "perplexityModel"
+    "perplexityModel",
+    "visibleTabs"
   ]);
   if (stored.geminiApiKey) apiKeyInput.value = stored.geminiApiKey;
+
+  const visibleTabs = { ...DEFAULT_VISIBLE_TABS, ...(stored.visibleTabs || {}) };
+  Object.entries(tabVisCheckboxes).forEach(([key, checkbox]) => {
+    if (checkbox) checkbox.checked = visibleTabs[key] !== false;
+  });
   if (stored.sheetsWebhookUrl) sheetsWebhookUrlInput.value = stored.sheetsWebhookUrl;
   if (stored.masterResume) resumeInput.value = stored.masterResume;
 
@@ -119,5 +134,22 @@ saveResumeBtn.addEventListener("click", async () => {
 });
 
 resumeInput.addEventListener("input", updateCharCount);
+
+Object.entries(tabVisCheckboxes).forEach(([key, checkbox]) => {
+  checkbox?.addEventListener("change", async () => {
+    const anyChecked = Object.values(tabVisCheckboxes).some((cb) => cb?.checked);
+    if (!anyChecked) {
+      checkbox.checked = true;
+      flashStatus(tabVisibilityStatus, "At least one tab must stay visible.", "err");
+      return;
+    }
+    const visibleTabs = {};
+    Object.entries(tabVisCheckboxes).forEach(([k, cb]) => {
+      visibleTabs[k] = !!cb?.checked;
+    });
+    await chrome.storage.local.set({ visibleTabs });
+    flashStatus(tabVisibilityStatus, "Saved ✓", "ok");
+  });
+});
 
 loadSavedValues();
