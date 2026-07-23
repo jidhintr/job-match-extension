@@ -1,20 +1,3 @@
-/**
- * Paste this into Extensions → Apps Script on the Google Sheet you want to log to,
- * replacing the default Code.gs contents. Then Deploy → Manage deployments → edit
- * (pencil) → New version → Deploy. Copy the /exec URL into the extension's Settings
- * page as the Google Sheets Webhook URL.
- *
- * The extension can't read the response back (see sidepanel.js for why), so this
- * only needs to succeed server-side — but it still returns JSON for manual testing.
- *
- * Two independent payload shapes land here, distinguished by `type`:
- *   - "job_match"      — Resume Matcher's condensed per-job row (Date/Company/Title/
- *                         ATS/Chance/MissingSkills/URL) → appended to one shared log tab.
- *   - "interview_prep"  — Interview Prep's questions only (no job/round/status
- *                         metadata) → written to a tab named after the company,
- *                         fully rewritten (not appended) each save so re-syncing
- *                         never creates duplicate rows.
- */
 
 const MASTER_LOG_SHEET_NAME = "Job Match Log";
 const MASTER_LOG_HEADERS = ["Date", "Company Name", "Job Title", "ATS Score (%)", "Interview Chance (%)", "Missing Skills", "Job URL"];
