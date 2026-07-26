@@ -96,9 +96,11 @@ The webhook sync is designed to:
 - `manifest.json` — MV3 extension manifest
 - `background.js` — background service worker for the extension
 - `options.html` / `options.js` — settings page
-- `sidepanel/sidepanel.html` / `sidepanel/sidepanel.js` / `sidepanel/sidepanel.css` — the main UI for Resume Matcher + Interview Prep
-- `sidepanel/aiProviders.js` — parallel provider scan logic
-- `sidepanel/resumeParser.js` — local PDF/DOCX resume parsing
+- `sidepanel/sidepanel.html` / `sidepanel/sidepanel.js` / `sidepanel/sidepanel.css` — sidepanel.js is now a thin ES-module entry point that wires up the modules below
+- `sidepanel/state/store.js` — central app state (settings, tab, matcher, prep, scan)
+- `sidepanel/services/` — storage, Gemini client, non-Gemini providers (`aiProviders.js`), resume parsing, Sheets sync, tab/content-script messaging, prompt helpers
+- `sidepanel/ui/` — DOM element cache, status-line factory, generic render helpers, formatting helpers
+- `sidepanel/features/` — one controller per feature: `bootstrap.js` (settings/tabs/resume), `matcher.js`, `prep.js`, `coverLetter.js`, `salary.js`, `scan.js`
 - `content/content.js` — page-text extraction helper
 - `lib/pdfjs/` — bundled PDF.js runtime
 - `google-apps-script.js` — Google Apps Script webhook handler
