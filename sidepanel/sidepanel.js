@@ -1,14 +1,10 @@
-// Ordered cascade, top-tier first. Every Gemini operation (resume matching,
-// question generation, master consolidation) walks this list and drops to the
-// next model on any transient failure. Google churns model availability often,
-// so we keep the list intentionally current and retryable: any 404/400/429/503,
-// timeout, or text such as "model is no longer available" simply skips to the
-// next tier instead of dead-ending the whole call.
+
+
 const GEMINI_MODELS = [
-  "gemini-3.1-flash-lite", // Most daily headroom on the free tier — try first
-  "gemini-2.5-flash",      // Balanced workhorse, some headroom
-  "gemini-2.5-flash-lite", // Lightweight fallback, some headroom
-  "gemini-3.5-flash"       // Highest quality but tightest daily cap — last resort
+  "gemini-3.1-flash-lite", 
+  "gemini-2.5-flash",      
+  "gemini-2.5-flash-lite", 
+  "gemini-3.5-flash"       
 ];
 
 const GEMINI_CALL_TIMEOUT_MS = 10000;
@@ -17,11 +13,6 @@ function geminiUrlFor(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 }
 
-// Each optional Resume Matcher report section: its prompt step (renumbered
-// dynamically after the 3 always-on core steps) and its schema slice. Only
-// sections the user has enabled in Settings get included in the prompt AND
-// the response schema — a disabled section costs zero output tokens since
-// Gemini is never asked for it at all, not just hidden client-side.
 const RESUME_SECTIONS = [
   {
     id: "missing_skills",
@@ -163,14 +154,16 @@ function buildAnalysisPromptAndSchema(sectionOrder) {
   let step = 4;
   const stepLines = enabledSections.map((s) => `${step++}. ${s.promptStep}`).join("\n");
 
+  const candidateContext = (customInstructions.matcher || "").trim() || "(none provided)";
   const systemPrompt = `You are an expert technical recruiter, ATS (Applicant Tracking System) simulator, and career coach with 15+ years of experience hiring for technology roles.
 
 You will be given a candidate's MASTER RESUME and a JOB DESCRIPTION. Analyze the resume strictly against the job description and produce a brutally honest, actionable evaluation.
 
 CANDIDATE CONTEXT (apply to every analysis, regardless of what's in the resume text):
-- The candidate speaks only English. If the job posting states fluency in another language (German, Dutch, French, Polish, etc.) as a MANDATORY/REQUIRED qualification — not merely a "nice to have" or an incidental mention like "collaborates with our Berlin office" — this is a hard disqualifying blocker. In that case: set chance_of_getting_job to 0, set warnings.language_barrier to a short sentence naming the required language, and keep every other section brief/minimal (e.g. a single short note instead of a full breakdown) rather than producing a full deep analysis — there is no point coaching for a role the candidate cannot legally/practically perform. Still fill ats_score honestly based on skills/keyword match alone (it remains informational). Every other schema field must still be present and valid, just terse.
-- The candidate holds an EU Blue Card and is legally authorized to work in Poland without any visa or employer sponsorship, and is open to the general labor market (not tied to a single employer). For roles based outside Poland, the candidate can generally transfer their Blue Card to another EU country with minimal paperwork under EU intra-mobility rules. Do NOT treat "role is outside Poland" as a negative factor by itself, and do NOT lower chance_of_getting_job for it. ONLY if the job posting explicitly states something like "no visa sponsorship," "must already be authorized to work locally," or "no relocation support" for a role outside Poland, set warnings.visa_sponsorship_concern to a short sentence describing exactly what the posting said — this is a heads-up for the candidate to judge, not an automatic score penalty.
-- If neither condition applies, set warnings.language_barrier and warnings.visa_sponsorship_concern to empty strings.
+"""
+${candidateContext}
+"""
+If the context above describes a hard disqualifying blocker (e.g. a required language the candidate doesn't speak, or a work-authorization restriction that applies to this specific job), set chance_of_getting_job to 0, set warnings.language_barrier or warnings.visa_sponsorship_concern to a short sentence naming the issue, and keep every other section brief/minimal rather than a full deep analysis. If no such condition applies, set warnings.language_barrier and warnings.visa_sponsorship_concern to empty strings. Still fill ats_score honestly based on skills/keyword match alone regardless.
 
 Follow this evaluation process:
 1. Identify company_name (the hiring company's name exactly as it appears in the posting) and job_title (the role title exactly as posted).
@@ -208,10 +201,12 @@ Respond with ONLY a single valid JSON object matching the required response sche
   return { systemPrompt, schema: { type: "OBJECT", properties, required } };
 }
 
-// Guards against stale/malformed storage (unknown ids from an older version,
-// a partial list missing a section entirely) by reconciling against the
-// current RESUME_SECTIONS registry — any section missing from saved data is
-// appended as enabled so newly-added sections aren't silently lost/hidden.
+function withCustomInstructions(basePrompt, text) {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return basePrompt;
+  return `${basePrompt}\n\nADDITIONAL INSTRUCTIONS FROM THE USER (apply as extra context/rules):\n"""\n${trimmed}\n"""`;
+}
+
 function sanitizeSectionOrder(saved) {
   if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_SECTION_ORDER.map((s) => ({ ...s }));
   const validIds = new Set(RESUME_SECTIONS.map((s) => s.id));
@@ -223,9 +218,6 @@ function sanitizeSectionOrder(saved) {
   return cleaned;
 }
 
-// Hides disabled section blocks and re-orders the visible ones in the report
-// container to match Settings — reordering just re-appends existing DOM
-// nodes (appendChild moves rather than clones), no re-render of their data.
 function applySectionVisibilityAndOrder() {
   resumeSectionOrder.forEach(({ id, enabled }) => {
     const section = RESUME_SECTIONS.find((s) => s.id === id);
@@ -236,8 +228,6 @@ function applySectionVisibilityAndOrder() {
   });
 }
 
-// ---------- Interview Prep prompts/schemas ----------
-// Independent from the resume matcher above: JD-only, no resume involved.
 const PREP_OVERVIEW_SYSTEM_PROMPT = `You are an expert technical interview coach who has studied thousands of real candidate-reported interview experiences from Glassdoor, TeamBlind, and Prepfully.
 
 Given a JOB DESCRIPTION, identify the company_name and job_title exactly as posted, then predict the realistic focus areas of this role's interview process and how much each is typically weighted.
@@ -286,9 +276,6 @@ const PREP_QUESTIONS_SCHEMA = {
   required: ["questions"]
 };
 
-// Master consolidation engine — Gemini is the ONLY model that touches the
-// combined raw pile from the parallel scan. It dedupes near-identical wordings,
-// drops anything off-topic for the area, and enriches each survivor.
 const PREP_CONSOLIDATION_SYSTEM_PROMPT = `You are the master consolidation engine for an interview-prep tool.
 
 You will receive a COMPANY, JOB TITLE, INTERVIEW AREA, and a raw combined pile of candidate-reported interview questions and web snippets gathered in parallel from several sources (live web search of Glassdoor/Reddit/LeetCode/Blind, plus other AI models). The pile is noisy: duplicates, near-duplicate rewordings, off-topic entries, and prose snippets that merely mention or paraphrase a question.
@@ -325,7 +312,6 @@ const PREP_CONSOLIDATION_SCHEMA = {
 const PREP_AREA_COLORS = ["#f43f5e", "#2563eb", "#7c3aed", "#d97706", "#059669", "#0e7490", "#c2410c", "#4338ca"];
 const PREP_AREA_CLASS = ["rb-rose", "rb-blue", "rb-violet", "rb-amber", "rb-emerald", "rb-teal", "rb-orange", "rb-indigo"];
 
-// ---------- DOM refs ----------
 const setupBanner = document.getElementById("setupBanner");
 const setupBannerBtn = document.getElementById("setupBannerBtn");
 const openOptionsBtn = document.getElementById("openOptions");
@@ -375,7 +361,6 @@ const report = document.getElementById("report");
 const emptyState = document.getElementById("emptyState");
 const warningsBanner = document.getElementById("warningsBanner");
 
-// ---------- Tab switcher ----------
 const tabButtons = document.querySelectorAll(".tab-btn");
 const matcherView = document.getElementById("matcherView");
 const prepView = document.getElementById("prepView");
@@ -394,7 +379,6 @@ const saveScanBtn = document.getElementById("saveScanBtn");
 const scanStatusLine = document.getElementById("scanStatusLine");
 const scanResultsList = document.getElementById("scanResultsList");
 
-// ---------- Interview Prep DOM refs ----------
 const generatePrepBtn = document.getElementById("generatePrepBtn");
 const prepStatusLine = document.getElementById("prepStatusLine");
 const prepDashboard = document.getElementById("prepDashboard");
@@ -418,15 +402,10 @@ const sourceCheckboxes = {
   perplexity: document.getElementById("srcPerplexity")
 };
 
-// ---------- State ----------
 let apiKey = "";
 let masterResume = "";
 let sheetsWebhookUrl = "";
 
-// Interview Prep "Fetch Deep-Dive Questions" scans every source with a key set,
-// in parallel, then Gemini consolidates (see fetchAreaQuestions). Gemini itself
-// is always used (consolidation), so its key alone is enough; the others are
-// optional extra sources. Tavily is the live-web-search source.
 let tavilyKey = "";
 let deepseekKey = "";
 let deepseekModel = "";
@@ -434,15 +413,13 @@ let openaiKey = "";
 let openaiModel = "";
 let perplexityKey = "";
 let perplexityModel = "";
-// User-chosen subset of scan sources for Interview Prep question fetching —
-// independent of which keys happen to be configured. Persisted across
-// sessions since it's a standing preference, not per-job state.
 let prepSourceSelection = { gemini: true, tavily: true, deepseek: true, openai: true, perplexity: true };
-// Ordered list of { id, enabled } for the optional Resume Matcher report
-// sections — configured in Settings. Order determines both display order and
-// prompt step numbering; disabled sections are omitted from the Gemini call
-// entirely (see buildAnalysisPromptAndSchema), not just hidden after the fact.
 let resumeSectionOrder = DEFAULT_SECTION_ORDER.map((s) => ({ ...s }));
+
+const DEFAULT_MATCHER_INSTRUCTIONS = `The candidate speaks only English. If the job posting states fluency in another language (German, Dutch, French, Polish, etc.) as a MANDATORY/REQUIRED qualification — not merely a "nice to have" or an incidental mention like "collaborates with our Berlin office" — this is a hard disqualifying blocker.
+The candidate holds an EU Blue Card and is legally authorized to work in Poland without any visa or employer sponsorship, and is open to the general labor market (not tied to a single employer). For roles based outside Poland, the candidate can generally transfer their Blue Card to another EU country with minimal paperwork under EU intra-mobility rules. Do NOT treat "role is outside Poland" as a negative factor by itself, and do NOT lower chance_of_getting_job for it. ONLY flag it if the job posting explicitly states something like "no visa sponsorship," "must already be authorized to work locally," or "no relocation support" for a role outside Poland.`;
+
+let customInstructions = { matcher: DEFAULT_MATCHER_INSTRUCTIONS, prep: "", apply: "", scan: "" };
 let lastJobText = "";
 let lastJobUrl = "";
 let lastCompanyGuess = "";
@@ -451,8 +428,6 @@ let currentTabId = null;
 let prepRecruiterNotes = "";
 let prepAutoSaveTimer = null;
 
-// A resume uploaded via "Upload Resume" applies only to this tab's analyses
-// and is never written to the saved master resume — see effectiveResume().
 let tabResumeOverride = null;
 let tabResumeFileName = "";
 
@@ -464,26 +439,14 @@ function hasUsableResume() {
   return !!effectiveResume();
 }
 
-// Interview Prep is independent of the matcher above (JD-only, no resume),
-// but reuses lastJobText/lastJobUrl/extractJobTextFromActiveTab() when
-// available so it doesn't force a second page scrape.
-let prepAreas = []; // [{ id, title, predictedRound, weightPercent, masterChecked, questionsFetched, questions: [{id,text,checked}] }]
+let prepAreas = []; 
 let prepJobUrl = "";
-// Interview Prep determines its own company/title via Gemini rather than
-// depending on Resume Matcher having run first — it's meant to work standalone
-// (per the "fully independent" requirement), and this is what names the
-// company-specific Google Sheet tab, so it needs to be reliable on its own.
+
 let prepCompanyName = "";
 let prepJobTitle = "";
 
 const TAB_STATE_KEY_PREFIX = "jobMatchState:";
 
-// ---------- Per-tab persistence ----------
-// Each tab gets its own side panel document (see background.js), so this
-// module-level state is already isolated per tab. We additionally persist
-// state to chrome.storage.session so it survives the browser discarding/
-// reloading a hidden panel document, and restore it on load — switching back
-// to a tab always shows what you last analyzed (and uploaded) there.
 async function restoreTabState() {
   try {
     const tab = await chrome.tabs.getCurrent();
@@ -528,7 +491,6 @@ async function persistTabSessionState() {
   });
 }
 
-// ---------- Init ----------
 async function init() {
   const stored = await chrome.storage.local.get([
     "geminiApiKey",
@@ -543,7 +505,8 @@ async function init() {
     "perplexityModel",
     "prepSourceSelection",
     "visibleTabs",
-    "resumeSectionOrder"
+    "resumeSectionOrder",
+    "customInstructions"
   ]);
   apiKey = stored.geminiApiKey || "";
   masterResume = stored.masterResume || "";
@@ -559,17 +522,19 @@ async function init() {
   applyTabVisibility(stored.visibleTabs);
   resumeSectionOrder = sanitizeSectionOrder(stored.resumeSectionOrder);
   applySectionVisibilityAndOrder();
+  if (stored.customInstructions) {
+    customInstructions = { ...customInstructions, ...stored.customInstructions };
+  }
   resumeQuickEdit.value = masterResume;
-  // Restore per-tab state (including any uploaded-resume override) before
-  // computing button states, so a tab with an override but no saved master
-  // resume doesn't start with Analyze incorrectly disabled.
+  
+  
+  
   await restoreTabState();
   refreshSetupBanner();
   refreshSaveSheetsButton();
   refreshSourcePicker();
 }
 
-// ---------- Interview Prep: scan source picker ----------
 function refreshSourcePicker() {
   const keyBySource = {
     gemini: apiKey,
@@ -600,8 +565,6 @@ Object.entries(sourceCheckboxes).forEach(([source, checkbox]) => {
   });
 });
 
-// Returns the set of sources that are both user-selected and actually
-// configured with a key — the effective set to use for a scan.
 function effectivePrepSources() {
   return {
     gemini: prepSourceSelection.gemini && !!apiKey,
@@ -645,7 +608,6 @@ function refreshSaveSheetsButton() {
 openOptionsBtn.addEventListener("click", () => chrome.runtime.openOptionsPage());
 setupBannerBtn.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
-// ---------- Tab switcher ----------
 function activateTab(target) {
   tabButtons.forEach((b) => b.classList.toggle("active", b.dataset.tab === target));
   Object.entries(tabViewsByName).forEach(([name, view]) => view.classList.toggle("hidden", name !== target));
@@ -657,9 +619,6 @@ tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => activateTab(btn.dataset.tab));
 });
 
-// Settings lets the user hide tabs they don't use — hide their buttons here,
-// and if the currently active tab just got hidden, jump to the first tab
-// that's still visible so the panel never ends up showing nothing.
 function applyTabVisibility(visibleTabs) {
   const visible = { scan: true, matcher: true, prep: true, apply: true, ...(visibleTabs || {}) };
   const anyVisible = Object.values(visible).some(Boolean);
@@ -709,12 +668,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
     resumeSectionOrder = sanitizeSectionOrder(changes.resumeSectionOrder.newValue);
     applySectionVisibilityAndOrder();
   }
+  if (changes.customInstructions) {
+    customInstructions = { ...customInstructions, ...changes.customInstructions.newValue };
+  }
   refreshSetupBanner();
   refreshSaveSheetsButton();
   refreshSourcePicker();
 });
 
-// ---------- Drawer ----------
 drawerToggle.addEventListener("click", () => {
   const isHidden = drawerBody.classList.toggle("hidden");
   drawerChevron.textContent = isHidden ? "▾" : "▴";
@@ -730,14 +691,11 @@ saveResumeQuickBtn.addEventListener("click", async () => {
   refreshSetupBanner();
 });
 
-// ---------- Per-job resume upload (PDF/DOCX) ----------
-// Overrides masterResume for this tab only, per effectiveResume() — never
-// written to chrome.storage.local, so your saved master resume is untouched.
 uploadResumeBtn.addEventListener("click", () => resumeFileInput.click());
 
 resumeFileInput.addEventListener("change", async () => {
   const file = resumeFileInput.files?.[0];
-  resumeFileInput.value = ""; // allow re-selecting the same file later
+  resumeFileInput.value = ""; 
   if (!file) return;
 
   uploadResumeBtn.disabled = true;
@@ -768,7 +726,6 @@ clearResumeOverrideBtn.addEventListener("click", async () => {
   setStatus("Switched back to your master resume for this tab.", "ok");
 });
 
-// ---------- Status helpers ----------
 function setStatus(message, kind) {
   statusLine.textContent = message || "";
   statusLine.classList.remove("err", "ok");
@@ -781,12 +738,11 @@ function setBusy(isBusy, label) {
   if (isBusy) setStatus(label || "Working...");
 }
 
-// ---------- Content extraction ----------
 async function extractJobTextFromActiveTab() {
-  // Prefer the tab this panel is actually bound to (each tab has its own panel
-  // instance — see background.js) over whatever tab happens to be frontmost,
-  // so an analysis kicked off here still targets the right page even if the
-  // user has since switched to another tab.
+  
+  
+  
+  
   let tab;
   if (currentTabId != null) {
     tab = await chrome.tabs.get(currentTabId).catch(() => null);
@@ -827,12 +783,6 @@ async function extractJobTextFromActiveTab() {
   });
 }
 
-// ---------- Gemini call ----------
-// A failure is worth dropping to the next model tier for if it's transient or
-// model-specific: rate limit (429), server busy (503), model unavailable for
-// this key/region (404/400), the 10s timeout firing, or a response we couldn't
-// use (empty / malformed JSON). A genuine auth error (401/403) is NOT retryable
-// — the next model would fail identically — so it surfaces immediately.
 function isRetryableError(err) {
   if (!err) return false;
   if (err.isTimeout || err.isInvalidResponse) return true;
@@ -875,8 +825,8 @@ async function callGeminiModel(model, systemPrompt, userPrompt, schema) {
       timeoutErr.model = model;
       throw timeoutErr;
     }
-    // Network-level failure (DNS, offline, CORS) — treat as retryable so the
-    // cascade can try the next tier rather than dead-ending.
+    
+    
     const netErr = new Error(err.message || "Network error calling Gemini.");
     netErr.isInvalidResponse = true;
     netErr.model = model;
@@ -898,9 +848,6 @@ async function callGeminiModel(model, systemPrompt, userPrompt, schema) {
   const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
   if (!rawText) {
     const blockReason = data?.promptFeedback?.blockReason;
-    // A safety block is a real refusal, not a transient hiccup — don't burn the
-    // whole cascade retrying it; surface it. An otherwise-empty response is
-    // treated as invalid and retried on the next tier.
     if (blockReason) {
       const blockErr = new Error(`Gemini blocked the request: ${blockReason}`);
       blockErr.model = model;
@@ -922,9 +869,6 @@ async function callGeminiModel(model, systemPrompt, userPrompt, schema) {
   }
 }
 
-// Shared by Resume Matcher, Interview Prep question generation, and master
-// consolidation — each supplies its own system prompt/schema and gets the full
-// six-tier model cascade with per-attempt timeout for free.
 async function callGeminiWithFallback(systemPrompt, userPrompt, schema, onModelSwitch) {
   let lastErr;
   for (let i = 0; i < GEMINI_MODELS.length; i++) {
@@ -952,23 +896,15 @@ async function analyzeWithGemini(jobText, onModelSwitch) {
   return callGeminiWithFallback(systemPrompt, userPrompt, schema, onModelSwitch);
 }
 
-// ---------- Rendering ----------
 function clampScore(n) {
   const num = Number(n);
   if (Number.isNaN(num)) return 0;
-  // Defensive normalization: despite explicit prompt/schema instructions, the
-  // model can still occasionally return a 0-1 probability instead of a 0-100
-  // percentage. A non-integer strictly between 0 and 1 is a strong signal of
-  // that — a genuine percentage score essentially never lands as e.g. 0.65.
   const normalized = num > 0 && num < 1 ? num * 100 : num;
   return Math.max(0, Math.min(100, normalized));
 }
 
 for (const gauge of [atsGauge, chanceGauge]) {
-  const length = gauge.arc.getTotalLength();
-  gauge.arcLength = length;
-  gauge.arc.style.strokeDasharray = String(length);
-  gauge.arc.style.strokeDashoffset = String(length);
+  gauge.arcLength = gauge.arc.getTotalLength();
 }
 
 const CELEBRATE_THRESHOLD = 80;
@@ -979,10 +915,8 @@ function renderGaugeInto(gauge, score) {
   const offset = gauge.arcLength - (clamped / 100) * gauge.arcLength;
   const angle = -90 + (clamped / 100) * 180;
 
-  requestAnimationFrame(() => {
-    gauge.arc.style.strokeDashoffset = String(offset);
-    gauge.needle.style.transform = `rotate(${angle}deg)`;
-  });
+  gauge.arc.style.strokeDashoffset = String(offset);
+  gauge.needle.style.transform = `rotate(${angle}deg)`;
 
   gauge.value.textContent = `${Math.round(clamped)}%`;
   gauge.value.classList.remove("glow-red", "glow-yellow", "glow-green");
@@ -998,7 +932,6 @@ function renderGaugeInto(gauge, score) {
   }
   gauge.arc.style.stroke = colorVar;
   gauge.value.classList.add(glowClass);
-  gauge.card.classList.toggle("celebrate", clamped >= CELEBRATE_THRESHOLD);
 
   return clamped;
 }
@@ -1134,8 +1067,6 @@ goodFitToggle.addEventListener("click", () => {
   goodFitToggle.setAttribute("aria-expanded", String(!nowHidden));
 });
 
-// Every report section collapses/expands independently via its header —
-// delegated so it works uniformly across all of them without per-block wiring.
 report.addEventListener("click", (e) => {
   const toggle = e.target.closest(".block-toggle");
   if (!toggle) return;
@@ -1174,9 +1105,9 @@ function renderReport(result) {
 
   renderWarnings(result.warnings);
 
-  // Deterministic override, not just a prompt instruction: a mandatory
-  // language the candidate doesn't speak always zeroes the chance score,
-  // regardless of what the model returned.
+  
+  
+  
   const chanceScore = result.warnings?.language_barrier ? 0 : result.chance_of_getting_job;
   renderDashboard(result.ats_score, chanceScore);
 
@@ -1215,7 +1146,6 @@ function renderReport(result) {
   emptyState.classList.add("hidden");
 }
 
-// ---------- Actions ----------
 async function runAnalysis({ reextract }) {
   if (!apiKey || !hasUsableResume()) {
     setStatus("Add your API key and resume in Settings first.", "err");
@@ -1261,7 +1191,6 @@ async function runAnalysis({ reextract }) {
   }
 }
 
-// ---------- Save to Google Sheets ----------
 async function saveResultToSheets() {
   if (!sheetsWebhookUrl || !lastResult) return;
 
@@ -1281,12 +1210,12 @@ async function saveResultToSheets() {
   saveSheetsBtn.textContent = "Saving...";
 
   try {
-    // Apps Script Web Apps are notoriously CORS-unfriendly for anything but
-    // simple requests, and their response often can't be read back from a
-    // cross-origin fetch even when the row was appended successfully. Using
-    // no-cors + text/plain sidesteps the preflight entirely; we treat a
-    // fetch that doesn't throw as "delivered" since we can't inspect the
-    // (opaque) response either way.
+    
+    
+    
+    
+    
+    
     await fetch(sheetsWebhookUrl, {
       method: "POST",
       mode: "no-cors",
@@ -1308,15 +1237,11 @@ async function saveResultToSheets() {
   }
 }
 
-// ---------- Interview Prep ----------
 function slugify(text, index) {
   const base = (text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   return base ? `${base}-${index}` : `area-${index}`;
 }
 
-// Gemini's weight_percent values won't always sum to exactly 100 (rounding
-// drift) — the donut chart needs an exact 100 to draw closed, gap-free
-// segments, so we rescale proportionally rather than trusting raw output.
 function normalizeAreas(rawAreas) {
   const mapped = (Array.isArray(rawAreas) ? rawAreas : []).map((a, i) => ({
     id: slugify(a.title, i),
@@ -1428,8 +1353,6 @@ function setPrepStatus(message, kind) {
   if (kind) prepStatusLine.classList.add(kind);
 }
 
-// Which sources a scan will actually query, based on configured keys. Gemini is
-// always in (consolidation engine); the rest join only if their key is set.
 function prepScanSourcesLabel() {
   const active = effectivePrepSources();
   const sources = [];
@@ -1540,8 +1463,8 @@ function renderQuestionsList(area, listEl, masterCheckboxEl) {
     span.textContent = q.text;
     textWrap.appendChild(span);
 
-    // Enrichment badges from the consolidation pass (absent on older saved data),
-    // plus an "Answer" action alongside them that opens Gemini with the question.
+    
+    
     const badges = document.createElement("div");
     badges.className = "prep-question-badges";
     if (q.category) badges.appendChild(makeQBadge(q.category, "cat"));
@@ -1575,9 +1498,6 @@ function buildAnswerPrompt(questionText) {
   return `Answer this interview question exactly like a lead engineer would in a real interview — cover every edge case and possibility, don't leave anything out, and explain your reasoning clearly the way you'd walk an interviewer through it out loud:\n\n"${questionText}"`;
 }
 
-// Base chat URLs for each provider. Perplexity's ?q= reliably prefills+runs on
-// its own; the rest get their prompt typed in and submitted via an injected
-// content script once the tab finishes loading (see fillAndSubmitPrompt).
 const ANSWER_PROVIDER_URLS = {
   gemini: "https://gemini.google.com/app",
   deepseek: "https://chat.deepseek.com/",
@@ -1585,10 +1505,6 @@ const ANSWER_PROVIDER_URLS = {
   perplexity: "https://www.perplexity.ai/search"
 };
 
-// Runs inside the opened chat tab. Must be fully self-contained (no closures
-// over outer scope) since chrome.scripting serializes only the function body.
-// Best-effort: each site's input DOM can change at any time and break this;
-// it retries briefly, and the prompt is also on the clipboard as a fallback.
 function fillAndSubmitPrompt(promptText) {
   function setNativeValue(el, value) {
     const proto = el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
@@ -1663,7 +1579,7 @@ function askInTab(url, promptText) {
     const listener = (updatedTabId, changeInfo) => {
       if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
       chrome.tabs.onUpdated.removeListener(listener);
-      // Give the page's JS a moment to hydrate its input box after "complete".
+      
       setTimeout(() => {
         chrome.scripting.executeScript({
           target: { tabId },
@@ -1695,7 +1611,7 @@ function makeAnswerButton(questionText) {
     try {
       await navigator.clipboard.writeText(prompt);
     } catch {
-      // Best-effort — auto-fill below doesn't depend on the clipboard.
+      
     }
 
     targets.forEach((source) => {
@@ -1734,9 +1650,6 @@ function toggleAreaMaster(area, checked, questionsListEl) {
   schedulePrepSheetSave();
 }
 
-// Gemini participates in the parallel scan too (one of the sources), separate
-// from its role as the sole consolidator afterward. Kept as its own function so
-// it can be dropped into Promise.allSettled alongside the non-Gemini sources.
 async function geminiScanQuestions(area) {
   const userPrompt = `JOB DESCRIPTION:\n"""\n${lastJobText}\n"""\n\nINTERVIEW AREA: ${area.title} (${area.predictedRound})`;
   const result = await callGeminiWithFallback(PREP_QUESTIONS_SYSTEM_PROMPT, userPrompt, PREP_QUESTIONS_SCHEMA);
@@ -1747,8 +1660,8 @@ async function fetchAreaQuestions(area, els) {
   const { fetchBtn, statusEl, questionsListEl, masterCheckbox } = els;
 
   if (!apiKey) {
-    // Gemini is mandatory — it's the consolidation engine, so nothing works
-    // without it even if other source keys are present.
+    
+    
     setPrepStatus("Add your Gemini API key in Settings first — it powers question consolidation.", "err");
     chrome.runtime.openOptionsPage();
     return;
@@ -1773,7 +1686,6 @@ async function fetchAreaQuestions(area, els) {
   const jobTitle = prepJobTitle || lastResult?.job_title || "";
 
   try {
-    // ---- STEP 1: parallel scan across every user-selected, configured source ----
     statusEl.textContent = `Scanning ${prepScanSourcesLabel()}...`;
 
     const { scanNonGeminiSources } = await import(chrome.runtime.getURL("sidepanel/aiProviders.js"));
@@ -1794,8 +1706,6 @@ async function fetchAreaQuestions(area, els) {
       models: { deepseek: deepseekModel, openai: openaiModel, perplexity: perplexityModel }
     };
 
-    // Gemini scan + all non-Gemini sources fire together via allSettled — one
-    // failing source (bad key, timeout) can't sink the batch.
     const [geminiSettled, nonGemini] = await Promise.all([
       Promise.allSettled([active.gemini ? geminiScanQuestions(area) : Promise.resolve([])]),
       scanNonGeminiSources(scanCtx)
@@ -1812,7 +1722,7 @@ async function fetchAreaQuestions(area, els) {
       throw new Error("No sources returned any questions. Check your API keys in Settings, or try again.");
     }
 
-    // ---- STEP 2: Gemini master consolidation (dedupe, group, rank) ----
+    
     statusEl.textContent = `Consolidating ${rawItems.length} results from ${sourcesUsed.length} source(s)...`;
 
     const consolidationPrompt = `COMPANY: ${company || "Unknown"}\nJOB TITLE: ${jobTitle || "Unknown"}\nINTERVIEW AREA: ${area.title} (${area.predictedRound})\n\nRAW COMBINED QUESTIONS/SNIPPETS (from ${sourcesUsed.join(", ")}):\n"""\n${rawItems.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n"""`;
@@ -1992,7 +1902,7 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
       : "";
     const userPrompt = `JOB DESCRIPTION:\n"""\n${lastJobText}\n"""\n\n${notesSection}`;
     const result = await callGeminiWithFallback(
-      PREP_OVERVIEW_SYSTEM_PROMPT,
+      withCustomInstructions(PREP_OVERVIEW_SYSTEM_PROMPT, customInstructions.prep),
       userPrompt,
       PREP_OVERVIEW_SCHEMA,
       (model) => setPrepStatus(`Busy — switching to ${model} and retrying...`)
@@ -2001,11 +1911,6 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
     prepJobUrl = lastJobUrl;
     prepCompanyName = result.company_name || lastCompanyGuess || "";
     prepJobTitle = result.job_title || "";
-    // The wildcard area is appended deterministically rather than asked for
-    // in the prompt above it — its own Fetch Deep-Dive Questions call still
-    // produces genuinely company/stack-tailored questions (it's given the
-    // real job description), so nothing is lost by not relying on the model
-    // to remember to include it, and it can't end up duplicated either.
     prepAreas = normalizeAreas([
       ...(result.areas || []),
       { title: "🔮 AI Company & Stack Predictions", predicted_round: "Any Round — Wildcard", weight_percent: 15 }
@@ -2027,8 +1932,6 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
   }
 }
 
-
-
 generatePrepBtn.addEventListener("click", () => runGeneratePrep());
 updateFocusBtn?.addEventListener("click", () => runGeneratePrep({ forceRegenerate: true }));
 savePrepSheetsBtn?.addEventListener("click", () => savePrepProgressToSheets({ silent: false }));
@@ -2037,7 +1940,6 @@ analyzeBtn.addEventListener("click", () => runAnalysis({ reextract: true }));
 reanalyzeBtn.addEventListener("click", () => runAnalysis({ reextract: false }));
 saveSheetsBtn.addEventListener("click", saveResultToSheets);
 
-// ---------- Cover Letter & Salary ----------
 const COVER_LETTER_SYSTEM_PROMPT = `You are an expert career coach writing a concise, professional cover letter for a specific job application.
 
 You will be given a candidate's MASTER RESUME and a JOB DESCRIPTION. Write a genuine, tailored one-page cover letter — never use placeholder text like "[Your Name]" or "[Company Name]"; extract the candidate's actual name from the resume and the company/role from the job description, and use them directly. If the candidate's name truly cannot be found in the resume, omit it (return an empty string) rather than inventing or placeholding it.
@@ -2070,7 +1972,7 @@ async function generateCoverLetter() {
   applyStatusLine.textContent = "Writing your cover letter...";
   try {
     const userPrompt = `MASTER RESUME:\n"""\n${effectiveResume()}\n"""\n\nJOB DESCRIPTION:\n"""\n${lastJobText}\n"""\n\nCOMPANY: ${lastResult.company_name || ""}\nROLE: ${lastResult.job_title || ""}`;
-    const data = await callGeminiWithFallback(COVER_LETTER_SYSTEM_PROMPT, userPrompt, COVER_LETTER_SCHEMA, (m) => {
+    const data = await callGeminiWithFallback(withCustomInstructions(COVER_LETTER_SYSTEM_PROMPT, customInstructions.apply), userPrompt, COVER_LETTER_SCHEMA, (m) => {
       applyStatusLine.textContent = `Busy — switching to ${m}...`;
     });
     buildCoverLetterPdf(data);
@@ -2181,12 +2083,12 @@ async function checkSalary() {
         });
         if (snippets.length) webContext = `\n\nLIVE WEB SEARCH SNIPPETS (salary/benefits related):\n"""\n${snippets.slice(0, 8).join("\n")}\n"""`;
       } catch {
-        // Best-effort — Gemini still answers from its own knowledge if this fails.
+        
       }
     }
 
     const userPrompt = `COMPANY: ${lastResult.company_name || "Unknown"}\nROLE: ${lastResult.job_title || "Unknown"}\n\nJOB DESCRIPTION:\n"""\n${lastJobText}\n"""${webContext}`;
-    const data = await callGeminiWithFallback(SALARY_SYSTEM_PROMPT, userPrompt, SALARY_SCHEMA, (m) => {
+    const data = await callGeminiWithFallback(withCustomInstructions(SALARY_SYSTEM_PROMPT, customInstructions.apply), userPrompt, SALARY_SCHEMA, (m) => {
       applyStatusLine.textContent = `Busy — switching to ${m}...`;
     });
     renderSalaryResult(data);
@@ -2261,7 +2163,6 @@ function renderSalaryResult(data) {
 coverLetterBtn.addEventListener("click", generateCoverLetter);
 checkSalaryBtn.addEventListener("click", checkSalary);
 
-// ---------- Scan Jobs ----------
 let scanResults = [];
 
 const BULK_MATCH_SYSTEM_PROMPT = `You are a fast ATS matching engine. Given a candidate's resume and one job posting (title/company/description, which may be brief), return a realistic match percentage and exactly 7 key technical skills/technologies this posting asks for.
@@ -2288,9 +2189,9 @@ function scanJobListOnActiveTab() {
 
     const run = async () => {
       if (currentTabId != null) tab = await chrome.tabs.get(currentTabId).catch(() => null);
-      // The bound tab might exist but no longer be the job listings page (or
-      // any http(s) page at all) — fall back to whatever tab is actually
-      // active in this window rather than failing on a stale binding.
+      
+      
+      
       if (!tab || !/^https?:\/\//.test(tab.url || "")) {
         [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       }
@@ -2351,7 +2252,7 @@ async function runScanAndFilter() {
       scanStatusLine.textContent = `Scoring ${i + 1}/${jobs.length}: ${job.title}...`;
       try {
         const userPrompt = `RESUME:\n"""\n${resume}\n"""\n\nJOB TITLE: ${job.title}\nCOMPANY: ${job.company}\nJOB TEXT:\n"""\n${job.description || "(no description available)"}\n"""`;
-        const data = await callGeminiWithFallback(BULK_MATCH_SYSTEM_PROMPT, userPrompt, BULK_MATCH_SCHEMA);
+        const data = await callGeminiWithFallback(withCustomInstructions(BULK_MATCH_SYSTEM_PROMPT, customInstructions.scan), userPrompt, BULK_MATCH_SCHEMA);
         const matchPercent = Math.round(Number(data.match_percent) || 0);
         if (matchPercent > 50) {
           matched.push({

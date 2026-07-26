@@ -8,7 +8,7 @@ const SCAN_JOBS_SHEET_NAME = "MatcherJobs";
 const SCAN_JOBS_HEADERS = ["Date", "Title", "Company", "URL", "Match %", "Status"];
 
 function sanitizeSheetName(name) {
-  // Google Sheets tab names can't contain : \ / ? * [ ] and must be <= 100 chars.
+  
   const cleaned = String(name || "Unknown Company").replace(/[:\\\/\?\*\[\]]/g, " ").trim();
   return cleaned.slice(0, 100) || "Unknown Company";
 }
@@ -25,9 +25,9 @@ function ensureHeaders(sheet, headers) {
     sheet.setFrozenRows(1);
     return;
   }
-  // Sheet already has a header row from before a column was added (e.g. the
-  // new Status column) — patch in any missing trailing headers in place
-  // rather than requiring the user to fix it by hand or losing existing rows.
+  
+  
+  
   const existingCount = sheet.getLastColumn();
   if (existingCount < headers.length) {
     const missing = headers.slice(existingCount);
@@ -66,8 +66,8 @@ function handleInterviewPrepSync(data) {
     });
   });
 
-  // Full-snapshot sync: each save replaces the tab's question list with the
-  // current full set, so re-syncing never creates duplicate rows.
+  
+  
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
@@ -114,8 +114,6 @@ function doPost(e) {
   }
 }
 
-// Visiting the deployed /exec URL in a browser hits this — useful to confirm
-// the deployment is live and pointed at the right sheet before wiring it up.
 function doGet() {
   return ContentService
     .createTextOutput(JSON.stringify({ status: "ok", sheet: MASTER_LOG_SHEET_NAME }))

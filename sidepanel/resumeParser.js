@@ -1,6 +1,4 @@
-// Extracts plain text from an uploaded resume file (PDF or DOCX). Loaded via
-// dynamic import() only when the user actually uploads a file, so the ~1.7MB
-// PDF.js bundle never loads on a normal side panel open.
+
 
 const MAX_CHARS = 20000;
 
@@ -19,7 +17,6 @@ export async function parseResumeFile(file) {
   throw new Error("Unsupported file type — upload a .pdf or .docx file.");
 }
 
-// ---------- PDF ----------
 async function parsePdf(file) {
   const pdfjsLib = await import(chrome.runtime.getURL("lib/pdfjs/pdf.min.mjs"));
   pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL("lib/pdfjs/pdf.worker.min.mjs");
@@ -39,11 +36,6 @@ async function parsePdf(file) {
   return text;
 }
 
-// ---------- DOCX ----------
-// A .docx is a ZIP archive; we only need the word/document.xml entry, read via
-// the ZIP central directory (authoritative for entry size/offset, unlike the
-// local header) and decompressed with the browser's native Compression
-// Streams API — no third-party ZIP/inflate library needed.
 async function parseDocx(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const xml = await extractZipEntryText(bytes, "word/document.xml");
@@ -72,8 +64,8 @@ async function parseDocx(file) {
 async function extractZipEntryText(bytes, entryName) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-  // End Of Central Directory record — scan backward since it can be preceded
-  // by a variable-length (up to 65535-byte) comment field.
+  
+  
   const EOCD_SIG = 0x06054b50;
   let eocdOffset = -1;
   const searchStart = Math.max(0, bytes.length - 22 - 65535);

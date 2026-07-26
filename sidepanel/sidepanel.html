@@ -31,19 +31,9 @@
       <div id="matcherView" class="tab-view hidden">
       <div id="warningsBanner" class="warnings-banner hidden"></div>
 
-      <!-- DASHBOARD -->
+      
       <section class="dashboard" id="dashboard">
         <div id="glitterLayer" class="glitter-layer"></div>
-
-        <svg width="0" height="0" style="position:absolute">
-          <defs>
-            <linearGradient id="gaugeZones" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#3a3f5c" />
-              <stop offset="50%" stop-color="#4a5078" />
-              <stop offset="100%" stop-color="#3a3f5c" />
-            </linearGradient>
-          </defs>
-        </svg>
 
         <div class="gauges-row">
           <div class="gauge-card" id="atsGaugeCard">
@@ -51,24 +41,31 @@
               <path d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-track" />
               <g class="gauge-ticks">
                 <line x1="18.00" y1="110.00" x2="8.00" y2="110.00" />
-                <text x="0.00" y="110.00" text-anchor="end">0</text>
+                <text x="-1.00" y="110.00" text-anchor="end">0</text>
+                <line x1="22.01" y1="84.66" x2="12.50" y2="81.57" />
+                <text x="3.94" y="78.79" text-anchor="end">10</text>
                 <line x1="33.66" y1="61.80" x2="25.57" y2="55.92" />
-                <text x="19.10" y="51.22" text-anchor="end">20</text>
+                <text x="18.29" y="50.63" text-anchor="end">20</text>
+                <line x1="51.80" y1="43.66" x2="45.92" y2="35.57" />
+                <text x="40.63" y="28.29" text-anchor="end">30</text>
                 <line x1="74.66" y1="32.01" x2="71.57" y2="22.50" />
-                <text x="69.10" y="14.89" text-anchor="end">40</text>
+                <text x="68.79" y="13.94" text-anchor="end">40</text>
+                <line x1="100.00" y1="28.00" x2="100.00" y2="18.00" />
+                <text x="100.00" y="9.00" text-anchor="middle">50</text>
                 <line x1="125.34" y1="32.01" x2="128.43" y2="22.50" />
-                <text x="130.90" y="14.89" text-anchor="start">60</text>
+                <text x="131.21" y="13.94" text-anchor="start">60</text>
+                <line x1="148.20" y1="43.66" x2="154.08" y2="35.57" />
+                <text x="159.37" y="28.29" text-anchor="start">70</text>
                 <line x1="166.34" y1="61.80" x2="174.43" y2="55.92" />
-                <text x="180.90" y="51.22" text-anchor="start">80</text>
+                <text x="181.71" y="50.63" text-anchor="start">80</text>
+                <line x1="177.99" y1="84.66" x2="187.50" y2="81.57" />
+                <text x="196.06" y="78.79" text-anchor="start">90</text>
                 <line x1="182.00" y1="110.00" x2="192.00" y2="110.00" />
-                <text x="200.00" y="110.00" text-anchor="start">100</text>
+                <text x="201.00" y="110.00" text-anchor="start">100</text>
               </g>
               <path id="atsGaugeArc" d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-arc" />
-              <g id="atsGaugeNeedle" class="gauge-needle-group">
-                <line x1="100" y1="110" x2="100" y2="52" class="gauge-needle-shaft" />
-                <polygon points="100,40 93,54 107,54" class="gauge-needle-arrow" />
-              </g>
-              <circle cx="100" cy="110" r="7" class="gauge-pivot" />
+              <line id="atsGaugeNeedle" x1="100" y1="110" x2="100" y2="40" class="gauge-needle" />
+              <circle cx="100" cy="110" r="5" class="gauge-pivot" />
             </svg>
             <div class="gauge-label">
               <div id="atsScoreValue" class="gauge-value">--</div>
@@ -81,24 +78,31 @@
               <path d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-track" />
               <g class="gauge-ticks">
                 <line x1="18.00" y1="110.00" x2="8.00" y2="110.00" />
-                <text x="0.00" y="110.00" text-anchor="end">0</text>
+                <text x="-1.00" y="110.00" text-anchor="end">0</text>
+                <line x1="22.01" y1="84.66" x2="12.50" y2="81.57" />
+                <text x="3.94" y="78.79" text-anchor="end">10</text>
                 <line x1="33.66" y1="61.80" x2="25.57" y2="55.92" />
-                <text x="19.10" y="51.22" text-anchor="end">20</text>
+                <text x="18.29" y="50.63" text-anchor="end">20</text>
+                <line x1="51.80" y1="43.66" x2="45.92" y2="35.57" />
+                <text x="40.63" y="28.29" text-anchor="end">30</text>
                 <line x1="74.66" y1="32.01" x2="71.57" y2="22.50" />
-                <text x="69.10" y="14.89" text-anchor="end">40</text>
+                <text x="68.79" y="13.94" text-anchor="end">40</text>
+                <line x1="100.00" y1="28.00" x2="100.00" y2="18.00" />
+                <text x="100.00" y="9.00" text-anchor="middle">50</text>
                 <line x1="125.34" y1="32.01" x2="128.43" y2="22.50" />
-                <text x="130.90" y="14.89" text-anchor="start">60</text>
+                <text x="131.21" y="13.94" text-anchor="start">60</text>
+                <line x1="148.20" y1="43.66" x2="154.08" y2="35.57" />
+                <text x="159.37" y="28.29" text-anchor="start">70</text>
                 <line x1="166.34" y1="61.80" x2="174.43" y2="55.92" />
-                <text x="180.90" y="51.22" text-anchor="start">80</text>
+                <text x="181.71" y="50.63" text-anchor="start">80</text>
+                <line x1="177.99" y1="84.66" x2="187.50" y2="81.57" />
+                <text x="196.06" y="78.79" text-anchor="start">90</text>
                 <line x1="182.00" y1="110.00" x2="192.00" y2="110.00" />
-                <text x="200.00" y="110.00" text-anchor="start">100</text>
+                <text x="201.00" y="110.00" text-anchor="start">100</text>
               </g>
               <path id="chanceGaugeArc" d="M 20 110 A 80 80 0 0 1 180 110" class="gauge-arc" />
-              <g id="chanceGaugeNeedle" class="gauge-needle-group">
-                <line x1="100" y1="110" x2="100" y2="52" class="gauge-needle-shaft" />
-                <polygon points="100,40 93,54 107,54" class="gauge-needle-arrow" />
-              </g>
-              <circle cx="100" cy="110" r="7" class="gauge-pivot" />
+              <line id="chanceGaugeNeedle" x1="100" y1="110" x2="100" y2="40" class="gauge-needle" />
+              <circle cx="100" cy="110" r="5" class="gauge-pivot" />
             </svg>
             <div class="gauge-label">
               <div id="chanceValue" class="gauge-value">--</div>
@@ -113,7 +117,7 @@
         </div>
       </section>
 
-      <!-- ACTIONS -->
+      
       <section class="actions-row">
         <button id="analyzeBtn" class="primary-btn">Analyze Current Page</button>
         <button id="reanalyzeBtn" class="secondary-btn" disabled>Re-Analyze Match</button>
@@ -132,7 +136,7 @@
 
       <div id="statusLine" class="status-line"></div>
 
-      <!-- RESUME DRAWER -->
+      
       <section class="drawer">
         <button id="drawerToggle" class="drawer-toggle">
           <span>✎ Quick Resume Edit</span>
@@ -147,7 +151,7 @@
         </div>
       </section>
 
-      <!-- REPORT -->
+      
       <section id="report" class="report hidden">
 
         <div class="report-block rb-rose" id="missingSkillsBlock">
@@ -306,7 +310,7 @@
       </div>
       </div>
 
-      <!-- INTERVIEW PREP TAB -->
+      
       <div id="prepView" class="tab-view hidden">
         <details id="prepSourcePicker" class="prep-source-picker">
           <summary id="prepSourcePickerSummary">Scan Sources</summary>
@@ -358,7 +362,7 @@
         <div id="prepAreasList" class="prep-areas-list"></div>
       </div>
 
-      <!-- COVER LETTER & SALARY TAB -->
+      
       <div id="applyView" class="tab-view hidden">
         <div class="prep-input-actions top-actions">
           <button id="coverLetterBtn" class="primary-btn full-width" type="button" disabled>📄 Cover Letter</button>
@@ -372,7 +376,7 @@
         </details>
       </div>
 
-      <!-- SCAN JOBS TAB -->
+      
       <div id="scanView" class="tab-view">
         <div class="prep-input-actions top-actions">
           <button id="scanAndFilterBtn" class="primary-btn full-width" type="button" disabled>🔍 Scan and Filter</button>

@@ -1,28 +1,27 @@
-// Injected on demand by sidepanel.js (via chrome.scripting.executeScript) when the
-// user clicks "Analyze Current Page". Extracts the visible job description text
-// from the active tab and sends it back to the side panel.
+
+
 (function extractAndSendJobText() {
   const CANDIDATE_SELECTORS = [
-    // LinkedIn
+    
     ".jobs-description__content",
     ".jobs-description-content__text",
     ".jobs-box__html-content",
-    // Indeed
+    
     "#jobDescriptionText",
     ".jobsearch-jobDescriptionText",
-    // Glassdoor
+    
     '[data-test="jobDescription"]',
     ".JobDetails_jobDescription__uW_fK",
-    // Lever
+    
     ".posting-requirements",
     ".posting-description",
-    // Greenhouse
+    
     "#content",
     ".app-body",
     "#job-application-container",
-    // Workday / generic ATS fallbacks
+    
     '[data-automation-id="jobPostingDescription"]',
-    // Generic fallbacks
+    
     "article",
     "main"
   ];
@@ -40,10 +39,10 @@
     ".posting-headline .company-name"
   ];
 
-  // Elements that never carry job-description content but routinely get
-  // swept up by loosely-matched containers (article/main/body fallback) —
-  // stripped before reading text so Gemini isn't billed to read nav links,
-  // cookie banners, share widgets, etc.
+  
+  
+  
+  
   const STRIP_SELECTORS = [
     "script", "style", "noscript", "svg", "iframe", "template",
     "nav", "header", "footer", "form",
@@ -53,8 +52,8 @@
     '[class*="related-jobs" i]', '[class*="similar-jobs" i]', '[class*="share" i]'
   ].join(",");
 
-  // Hard cap on characters sent to Gemini as a cost/safety net against
-  // pathologically large pages slipping past the selectors above.
+  
+  
   const MAX_CHARS = 15000;
 
   function isUsableText(text) {
@@ -65,10 +64,10 @@
     const clone = root.cloneNode(true);
     clone.querySelectorAll(STRIP_SELECTORS).forEach((el) => el.remove());
 
-    // innerText needs a real layout box to compute correctly — a detached
-    // clone has none and silently reads back empty in Chrome. Mount it
-    // off-screen just long enough to read it, then remove it immediately;
-    // the live page is never visibly touched.
+    
+    
+    
+    
     clone.style.position = "fixed";
     clone.style.top = "-99999px";
     clone.style.left = "-99999px";
@@ -89,14 +88,14 @@
         return cleaned.slice(0, MAX_CHARS);
       }
     }
-    // Fallback: whole page body, stripped of chrome/boilerplate.
+    
     if (!document.body) return "";
     return cleanElementText(document.body).slice(0, MAX_CHARS);
   }
 
-  // Best-effort only — used to show a friendlier "Asking Gemini about X..."
-  // status line while waiting on the real answer. The authoritative company
-  // name/title come back from Gemini itself, which reads the full posting.
+  
+  
+  
   function extractCompanyGuess() {
     for (const selector of COMPANY_SELECTORS) {
       const text = document.querySelector(selector)?.textContent?.trim();

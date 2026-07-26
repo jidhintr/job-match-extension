@@ -75,7 +75,6 @@ html, body {
 }
 .icon-btn:hover { border-color: var(--accent); }
 
-/* ---------- TAB SWITCHER ---------- */
 .tab-switcher {
   display: flex;
   gap: 4px;
@@ -134,7 +133,6 @@ html, body {
   overflow-y: auto;
 }
 
-/* ---------- WARNINGS ---------- */
 .warnings-banner {
   display: flex;
   flex-direction: column;
@@ -170,7 +168,6 @@ html, body {
   color: #fcd377;
 }
 
-/* ---------- DASHBOARD ---------- */
 .dashboard {
   position: relative;
   background: linear-gradient(160deg, var(--panel), var(--panel-2));
@@ -201,19 +198,8 @@ html, body {
   align-items: center;
   border-radius: 12px;
   padding: 10px 4px 12px;
-  background: radial-gradient(120% 100% at 50% 10%, #23283f 0%, #14172a 70%, #0d0f1c 100%);
-  border: 1px solid rgba(255,255,255,0.06);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -12px 24px rgba(0,0,0,0.35);
-  transition: box-shadow 0.4s ease;
-}
-
-.gauge-card.celebrate {
-  animation: gauge-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes gauge-pulse {
-  0%, 100% { box-shadow: 0 0 0 rgba(250, 204, 21, 0); }
-  50% { box-shadow: 0 0 26px rgba(250, 204, 21, 0.45); }
+  background: var(--panel-2);
+  border: 1px solid var(--border);
 }
 
 .gauge-svg {
@@ -224,19 +210,17 @@ html, body {
 
 .gauge-track {
   fill: none;
-  stroke: url(#gaugeZones);
-  stroke-width: 12;
-  stroke-linecap: butt;
+  stroke: var(--border);
+  stroke-width: 10;
 }
 
 .gauge-ticks line {
-  stroke: rgba(255,255,255,0.85);
+  stroke: rgba(255,255,255,0.6);
   stroke-width: 1.5;
-  stroke-linecap: round;
 }
 
 .gauge-ticks text {
-  fill: rgba(255,255,255,0.6);
+  fill: var(--muted);
   font-size: 9px;
   font-weight: 700;
   font-family: inherit;
@@ -244,37 +228,23 @@ html, body {
 
 .gauge-arc {
   fill: none;
-  stroke: url(#none);
   stroke-width: 6;
   stroke-linecap: round;
   stroke-dasharray: 251.2;
   stroke-dashoffset: 251.2;
-  transition: stroke-dashoffset 1.1s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.6s ease;
   stroke: var(--red);
-  opacity: 0.9;
 }
 
-.gauge-needle-group {
-  transform-origin: 100px 110px;
-  transform: rotate(-90deg);
-  transition: transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
-}
-
-.gauge-needle-shaft {
-  stroke: #f3f4f8;
+.gauge-needle {
+  stroke: var(--text);
   stroke-width: 2.5;
   stroke-linecap: round;
-}
-
-.gauge-needle-arrow {
-  fill: #f3f4f8;
+  transform-origin: 100px 110px;
+  transform: rotate(-90deg);
 }
 
 .gauge-pivot {
-  fill: #f3f4f8;
-  stroke: rgba(0,0,0,0.4);
-  stroke-width: 1;
+  fill: var(--text);
 }
 
 .gauge-label {
@@ -302,7 +272,6 @@ html, body {
   margin-top: 2px;
 }
 
-/* ---------- JOB IDENTITY ---------- */
 .job-identity {
   text-align: center;
   margin-top: 14px;
@@ -333,7 +302,6 @@ html, body {
   margin-top: 2px;
 }
 
-/* ---------- GLITTER / CELEBRATION ---------- */
 .glitter-layer {
   position: absolute;
   inset: 0;
@@ -362,7 +330,6 @@ html, body {
   }
 }
 
-/* ---------- ACTIONS ---------- */
 .actions-row {
   display: flex;
   gap: 10px;
@@ -455,7 +422,6 @@ html, body {
 .link-btn:hover { opacity: 0.85; }
 .link-btn:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: none; }
 
-/* ---------- DRAWER ---------- */
 .drawer {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -508,7 +474,6 @@ html, body {
   font-weight: 700;
 }
 
-/* ---------- REPORT ---------- */
 .report-block {
   background: var(--rb-bg, var(--panel));
   border: 1px solid var(--rb-border, var(--border));
@@ -519,7 +484,6 @@ html, body {
   color: var(--rb-text, var(--text));
 }
 
-/* Distinct, light professional palette per section */
 .report-block.rb-rose {
   --rb-bg: #fff1f4; --rb-border: #fbcfd9; --rb-accent: #be123c;
   --rb-text: #3f0f1c; --rb-muted: #8a4a58; --rb-heading: #9f1239;
@@ -692,7 +656,6 @@ h4.neutral:first-of-type { margin-top: 0; }
 .severity-badge.med { background: #d97706; }
 .severity-badge.low { background: #059669; }
 
-/* ---------- COMPANY INSIGHTS ---------- */
 .company-stat-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -743,7 +706,6 @@ h4.neutral:first-of-type { margin-top: 0; }
 
 .empty-icon { font-size: 30px; margin-bottom: 10px; }
 
-/* ---------- INTERVIEW PREP ---------- */
 .prep-input-card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1095,7 +1057,6 @@ h4.neutral:first-of-type { margin-top: 0; }
   color: #fff;
 }
 
-/* ---------- SCAN JOBS ---------- */
 .scan-job-card {
   display: flex;
   gap: 10px;

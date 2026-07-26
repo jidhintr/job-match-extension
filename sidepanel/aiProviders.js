@@ -1,16 +1,4 @@
-// Multi-source scanners for Interview Prep's "Fetch Deep-Dive Questions" step.
-//
-// Architecture (see sidepanel.js fetchAreaQuestions for the orchestration):
-//   1. SCAN — every configured source below is queried IN PARALLEL via
-//      Promise.allSettled. Each returns raw questions/snippets; a missing key
-//      or a failing provider just yields nothing rather than sinking the batch.
-//   2. CONSOLIDATE — the combined raw pile is handed to Gemini alone (in
-//      sidepanel.js, via callGeminiWithFallback) to dedupe, group, and rank.
-//
-// This module only does step 1 for the NON-Gemini sources (Tavily live web,
-// DeepSeek, OpenAI). Gemini both participates in the scan and does the sole
-// consolidation, but those calls live in sidepanel.js because they need its
-// cascade + api key. Loaded via dynamic import() only when a scan runs.
+
 
 const QUESTION_SYSTEM_PROMPT = `You are an expert technical interview coach with deep knowledge of real candidate-reported interview questions from Glassdoor, Reddit, LeetCode, and TeamBlind.
 
@@ -31,8 +19,8 @@ function extractJsonBlock(rawText) {
   try {
     return JSON.parse(rawText);
   } catch {
-    // Providers without enforced JSON mode (Perplexity/Tavily answers, some
-    // completions) may wrap JSON in prose or citations — grab the first {...}.
+    
+    
     const match = rawText.match(/\{[\s\S]*\}/);
     if (!match) return null;
     try {
@@ -61,7 +49,6 @@ async function fetchWithTimeout(url, options, timeoutMs = 15000) {
   }
 }
 
-// ---------- OpenAI-compatible chat providers (DeepSeek, OpenAI) ----------
 async function scanOpenAICompatible({ endpoint, apiKey, model, providerLabel, promptCtx, supportsJsonMode }) {
   const body = {
     model,
@@ -121,9 +108,6 @@ export function scanPerplexity({ apiKey, model, ...promptCtx }) {
   });
 }
 
-// ---------- Tavily (live web search) ----------
-// Returns raw snippets/answer text rather than clean questions — the Gemini
-// consolidation pass extracts the actual questions from these web excerpts.
 export async function scanTavily({ apiKey, company, jobTitle, areaTitle }) {
   const query = `${company || ""} ${jobTitle || ""} interview questions ${areaTitle || ""} candidate reported`.trim();
 
@@ -153,10 +137,6 @@ export async function scanTavily({ apiKey, company, jobTitle, areaTitle }) {
   return snippets;
 }
 
-// ---------- Parallel orchestrator for the non-Gemini sources ----------
-// Returns { items: string[], sourcesUsed: string[], errors: [{source,message}] }.
-// Never throws — a failed/unconfigured source is captured, not propagated,
-// so one bad key can't sink the whole scan.
 export async function scanNonGeminiSources(ctx) {
   const { keys, models } = ctx;
   const tasks = [];

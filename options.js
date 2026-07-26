@@ -37,9 +37,28 @@ const tabVisCheckboxes = {
 };
 const DEFAULT_VISIBLE_TABS = { scan: true, matcher: true, prep: true, apply: true };
 
-// Mirrors the id/label pairs in sidepanel.js's RESUME_SECTIONS registry —
-// duplicated here since options.js and sidepanel.js are separate script
-// contexts with no shared module. Keep in sync if a section is added there.
+const DEFAULT_MATCHER_INSTRUCTIONS = `The candidate speaks only English. If the job posting states fluency in another language (German, Dutch, French, Polish, etc.) as a MANDATORY/REQUIRED qualification — not merely a "nice to have" or an incidental mention like "collaborates with our Berlin office" — this is a hard disqualifying blocker.
+The candidate holds an EU Blue Card and is legally authorized to work in Poland without any visa or employer sponsorship, and is open to the general labor market (not tied to a single employer). For roles based outside Poland, the candidate can generally transfer their Blue Card to another EU country with minimal paperwork under EU intra-mobility rules. Do NOT treat "role is outside Poland" as a negative factor by itself, and do NOT lower chance_of_getting_job for it. ONLY flag it if the job posting explicitly states something like "no visa sponsorship," "must already be authorized to work locally," or "no relocation support" for a role outside Poland.`;
+
+const instrInputs = {
+  matcher: document.getElementById("instrMatcher"),
+  prep: document.getElementById("instrPrep"),
+  apply: document.getElementById("instrApply"),
+  scan: document.getElementById("instrScan")
+};
+const instrStatuses = {
+  matcher: document.getElementById("instrMatcherStatus"),
+  prep: document.getElementById("instrPrepStatus"),
+  apply: document.getElementById("instrApplyStatus"),
+  scan: document.getElementById("instrScanStatus")
+};
+const instrSaveButtons = {
+  matcher: document.getElementById("saveInstrMatcher"),
+  prep: document.getElementById("saveInstrPrep"),
+  apply: document.getElementById("saveInstrApply"),
+  scan: document.getElementById("saveInstrScan")
+};
+
 const RESUME_SECTION_LABELS = {
   missing_skills: "Missing Skills",
   resume_optimization: "Resume Optimization",
@@ -136,12 +155,19 @@ async function loadSavedValues() {
     "perplexityKey",
     "perplexityModel",
     "visibleTabs",
-    "resumeSectionOrder"
+    "resumeSectionOrder",
+    "customInstructions"
   ]);
   if (stored.geminiApiKey) apiKeyInput.value = stored.geminiApiKey;
 
   resumeSectionOrder = sanitizeSectionOrder(stored.resumeSectionOrder);
   renderResumeSectionsList();
+
+  const savedInstructions = stored.customInstructions || {};
+  instrInputs.matcher.value = savedInstructions.matcher !== undefined ? savedInstructions.matcher : DEFAULT_MATCHER_INSTRUCTIONS;
+  instrInputs.prep.value = savedInstructions.prep || "";
+  instrInputs.apply.value = savedInstructions.apply || "";
+  instrInputs.scan.value = savedInstructions.scan || "";
 
   const visibleTabs = { ...DEFAULT_VISIBLE_TABS, ...(stored.visibleTabs || {}) };
   Object.entries(tabVisCheckboxes).forEach(([key, checkbox]) => {
@@ -197,8 +223,8 @@ saveProvidersBtn.addEventListener("click", async () => {
     perplexityKey: perplexityKeyInput.value.trim(),
     perplexityModel: perplexityModelInput.value.trim() || PROVIDER_DEFAULT_MODELS.perplexity
   });
-  // No per-source key is required — Gemini (saved above) drives consolidation on
-  // its own; these are all optional extra scan sources.
+  
+  
   flashStatus(providersStatus, "Saved ✓", "ok");
 });
 
@@ -228,6 +254,15 @@ Object.entries(tabVisCheckboxes).forEach(([key, checkbox]) => {
     });
     await chrome.storage.local.set({ visibleTabs });
     flashStatus(tabVisibilityStatus, "Saved ✓", "ok");
+  });
+});
+
+Object.entries(instrSaveButtons).forEach(([key, btn]) => {
+  btn?.addEventListener("click", async () => {
+    const stored = await chrome.storage.local.get("customInstructions");
+    const customInstructions = { ...(stored.customInstructions || {}), [key]: instrInputs[key].value.trim() };
+    await chrome.storage.local.set({ customInstructions });
+    flashStatus(instrStatuses[key], "Saved ✓", "ok");
   });
 });
 

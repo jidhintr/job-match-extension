@@ -206,6 +206,49 @@
     </div>
 
     <div class="card">
+      <label>Custom AI Instructions (per tab)</label>
+      <div class="hint">
+        Extra context/rules sent to Gemini for each feature — saved once, reused on every request. Leave blank to send none.
+      </div>
+
+      <div style="margin-top:10px">
+        <span class="field-label">Resume Matcher</span>
+        <textarea id="instrMatcher" rows="4" placeholder="e.g. work authorization, language constraints, seniority preferences..."></textarea>
+        <div class="actions">
+          <button type="button" id="saveInstrMatcher">Save</button>
+          <span class="status" id="instrMatcherStatus"></span>
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <span class="field-label">Interview Prep</span>
+        <textarea id="instrPrep" rows="4" placeholder="e.g. focus areas to emphasize, interview style preferences..."></textarea>
+        <div class="actions">
+          <button type="button" id="saveInstrPrep">Save</button>
+          <span class="status" id="instrPrepStatus"></span>
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <span class="field-label">Cover Letter &amp; Salary</span>
+        <textarea id="instrApply" rows="4" placeholder="e.g. tone preferences, salary negotiation stance..."></textarea>
+        <div class="actions">
+          <button type="button" id="saveInstrApply">Save</button>
+          <span class="status" id="instrApplyStatus"></span>
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <span class="field-label">Scan Jobs</span>
+        <textarea id="instrScan" rows="4" placeholder="e.g. must-have keywords, dealbreakers to weigh against match %..."></textarea>
+        <div class="actions">
+          <button type="button" id="saveInstrScan">Save</button>
+          <span class="status" id="instrScanStatus"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <label>Resume Matcher — Report Sections</label>
       <div class="hint">
         Turn off sections you don't use to cut Gemini output tokens — a disabled section is never
