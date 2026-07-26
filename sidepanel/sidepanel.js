@@ -17,7 +17,153 @@ function geminiUrlFor(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 }
 
-const SYSTEM_PROMPT = `You are an expert technical recruiter, ATS (Applicant Tracking System) simulator, and career coach with 15+ years of experience hiring for technology roles.
+// Each optional Resume Matcher report section: its prompt step (renumbered
+// dynamically after the 3 always-on core steps) and its schema slice. Only
+// sections the user has enabled in Settings get included in the prompt AND
+// the response schema — a disabled section costs zero output tokens since
+// Gemini is never asked for it at all, not just hidden client-side.
+const RESUME_SECTIONS = [
+  {
+    id: "missing_skills",
+    label: "Missing Skills",
+    blockId: "missingSkillsBlock",
+    promptStep: "Identify skills/keywords present in the job description but missing or weak in the resume (missing_skills).",
+    schema: { missing_skills: { type: "ARRAY", items: { type: "STRING" } } }
+  },
+  {
+    id: "resume_optimization",
+    label: "Resume Optimization",
+    blockId: "resumeOptimizationBlock",
+    promptStep: "Resume Optimization: concrete skills/keywords to add, and outdated/irrelevant skills to consider removing.",
+    schema: {
+      resume_optimization: {
+        type: "OBJECT",
+        properties: {
+          add_skills: { type: "ARRAY", items: { type: "STRING" } },
+          remove_skills: { type: "ARRAY", items: { type: "STRING" } }
+        },
+        required: ["add_skills", "remove_skills"]
+      }
+    }
+  },
+  {
+    id: "stage_1_attention_test",
+    label: "Stage 1 — Attention Test",
+    blockId: "stage1Block",
+    promptStep: "Stage 1 — Attention Test: imagine a recruiter scanning the resume for 6 seconds. What immediately stands out as impressive/relevant, and what is forgettable/generic?",
+    schema: {
+      stage_1_attention_test: {
+        type: "OBJECT",
+        properties: {
+          stands_out: { type: "ARRAY", items: { type: "STRING" } },
+          forgettable: { type: "ARRAY", items: { type: "STRING" } }
+        },
+        required: ["stands_out", "forgettable"]
+      }
+    }
+  },
+  {
+    id: "stage_2_mindset_breakdown",
+    label: "Stage 2 — Mindset Breakdown",
+    blockId: "stage2Block",
+    promptStep: "Stage 2 — Mindset Breakdown: identify weak areas in how the resume is framed for this role, and any credibility gaps (unverifiable or vague claims).",
+    schema: {
+      stage_2_mindset_breakdown: {
+        type: "OBJECT",
+        properties: {
+          weak_areas: { type: "ARRAY", items: { type: "STRING" } },
+          credibility_gaps: { type: "ARRAY", items: { type: "STRING" } }
+        },
+        required: ["weak_areas", "credibility_gaps"]
+      }
+    }
+  },
+  {
+    id: "stage_3_tech_gap_table",
+    label: "Stage 3 — Tech Gap Table",
+    blockId: "stage3Block",
+    promptStep: "Stage 3 — Technical Gap Table: list specific technologies/requirements from the job description, the context in which they're required, and how severe the gap is in the resume (High, Med, or Low).",
+    schema: {
+      stage_3_tech_gap_table: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            technology: { type: "STRING" },
+            context: { type: "STRING" },
+            severity: { type: "STRING", enum: ["High", "Med", "Low"] }
+          },
+          required: ["technology", "context", "severity"]
+        }
+      }
+    }
+  },
+  {
+    id: "why_good_fit",
+    label: "Why You're a Good Fit",
+    blockId: "goodFitBlock",
+    promptStep: "List exactly 10 concise, specific bullet points explaining why this candidate IS a good fit for the role (why_good_fit), ordered strongest-first since only the top 5 are shown by default. Always return exactly 10 items, even if you must include reasonably inferred strengths.",
+    schema: { why_good_fit: { type: "ARRAY", items: { type: "STRING" } } }
+  },
+  {
+    id: "role_prep",
+    label: "Interview & Role Prep",
+    blockId: "rolePrepBlock",
+    promptStep: 'Role Prep: problem_solved (short bullets on the underlying business problem this role exists to solve), expectations (short bullets on what success in the first 3-6 months looks like / what the hiring manager expects), focus_areas (short bullets on what the candidate should personally brush up on before interviewing, based on their specific resume gaps against this posting), interview_keywords (5-12 specific technical/domain terms and phrases from the job description the candidate should naturally work into interview answers).',
+    schema: {
+      role_prep: {
+        type: "OBJECT",
+        properties: {
+          problem_solved: { type: "ARRAY", items: { type: "STRING" } },
+          expectations: { type: "ARRAY", items: { type: "STRING" } },
+          focus_areas: { type: "ARRAY", items: { type: "STRING" } },
+          interview_keywords: { type: "ARRAY", items: { type: "STRING" } }
+        },
+        required: ["problem_solved", "expectations", "focus_areas", "interview_keywords"]
+      }
+    }
+  },
+  {
+    id: "company_insights",
+    label: "Company Insights",
+    blockId: "companyInsightsBlock",
+    promptStep: 'Company Insights: using your general knowledge of the company named in or inferable from the job description, summarize: core_business (what the company actually does, as short bullet points), employee_count (a rough headcount range, or "Not publicly known" if you cannot recall one), years_in_market (founding year and approximate age, or "Not publicly known"), interview_process (typical interview stages reported by candidates, e.g. on Glassdoor, as short bullet points, or a single item stating this isn\'t reliably known), work_environment (short bullet points on culture/pace/remote policy if known), glassdoor_rating (an approximate rating out of 5 if you recall one, or "Not publicly known"), and confidence_note (one honest sentence stating whether this is well-known public information, a rough estimate, or largely unknown — and recommending the candidate verify current figures directly on Glassdoor/LinkedIn before relying on them). Never invent precise statistics you are not reasonably confident about — prefer honest ranges or "Not publicly known" over fabricated precision.',
+    schema: {
+      company_insights: {
+        type: "OBJECT",
+        properties: {
+          core_business: { type: "ARRAY", items: { type: "STRING" } },
+          employee_count: { type: "STRING" },
+          years_in_market: { type: "STRING" },
+          interview_process: { type: "ARRAY", items: { type: "STRING" } },
+          work_environment: { type: "ARRAY", items: { type: "STRING" } },
+          glassdoor_rating: { type: "STRING" },
+          confidence_note: { type: "STRING" }
+        },
+        required: [
+          "core_business",
+          "employee_count",
+          "years_in_market",
+          "interview_process",
+          "work_environment",
+          "glassdoor_rating",
+          "confidence_note"
+        ]
+      }
+    }
+  }
+];
+
+const DEFAULT_SECTION_ORDER = RESUME_SECTIONS.map((s) => ({ id: s.id, enabled: true }));
+
+function buildAnalysisPromptAndSchema(sectionOrder) {
+  const enabledIds = (sectionOrder || DEFAULT_SECTION_ORDER).filter((s) => s.enabled).map((s) => s.id);
+  const enabledSections = RESUME_SECTIONS.filter((s) => enabledIds.includes(s.id));
+
+  let step = 4;
+  const stepLines = enabledSections.map((s) => `${step++}. ${s.promptStep}`).join("\n");
+
+  const systemPrompt = `You are an expert technical recruiter, ATS (Applicant Tracking System) simulator, and career coach with 15+ years of experience hiring for technology roles.
 
 You will be given a candidate's MASTER RESUME and a JOB DESCRIPTION. Analyze the resume strictly against the job description and produce a brutally honest, actionable evaluation.
 
@@ -30,14 +176,7 @@ Follow this evaluation process:
 1. Identify company_name (the hiring company's name exactly as it appears in the posting) and job_title (the role title exactly as posted).
 2. Simulate how an ATS would parse and score the resume against the job description's keywords, required skills, and qualifications. ats_score MUST be a whole number from 0 to 100 (a percentage) — never a 0–1 fraction like 0.65.
 3. Estimate the realistic chance a qualified human recruiter would move this candidate forward, considering ATS score, experience relevance, and seniority match. chance_of_getting_job MUST also be a whole number from 0 to 100 (a percentage), subject to the language-barrier override above.
-4. Identify skills/keywords present in the job description but missing or weak in the resume (missing_skills).
-5. Resume Optimization: concrete skills/keywords to add, and outdated/irrelevant skills to consider removing.
-6. Stage 1 — Attention Test: imagine a recruiter scanning the resume for 6 seconds. What immediately stands out as impressive/relevant, and what is forgettable/generic?
-7. Stage 2 — Mindset Breakdown: identify weak areas in how the resume is framed for this role, and any credibility gaps (unverifiable or vague claims).
-8. Stage 3 — Technical Gap Table: list specific technologies/requirements from the job description, the context in which they're required, and how severe the gap is in the resume (High, Med, or Low).
-9. List exactly 10 concise, specific bullet points explaining why this candidate IS a good fit for the role (why_good_fit), ordered strongest-first since only the top 5 are shown by default. Always return exactly 10 items, even if you must include reasonably inferred strengths.
-10. Company Insights: using your general knowledge of the company named in or inferable from the job description, summarize: core_business (what the company actually does, as short bullet points), employee_count (a rough headcount range, or "Not publicly known" if you cannot recall one), years_in_market (founding year and approximate age, or "Not publicly known"), interview_process (typical interview stages reported by candidates, e.g. on Glassdoor, as short bullet points, or a single item stating this isn't reliably known), work_environment (short bullet points on culture/pace/remote policy if known), glassdoor_rating (an approximate rating out of 5 if you recall one, or "Not publicly known"), and confidence_note (one honest sentence stating whether this is well-known public information, a rough estimate, or largely unknown — and recommending the candidate verify current figures directly on Glassdoor/LinkedIn before relying on them). Never invent precise statistics you are not reasonably confident about — prefer honest ranges or "Not publicly known" over fabricated precision.
-11. Role Prep: problem_solved (short bullets on the underlying business problem this role exists to solve), expectations (short bullets on what success in the first 3-6 months looks like / what the hiring manager expects), focus_areas (short bullets on what the candidate should personally brush up on before interviewing, based on their specific resume gaps against this posting), interview_keywords (5-12 specific technical/domain terms and phrases from the job description the candidate should naturally work into interview answers).
+${stepLines}
 
 Be specific and reference actual terms from the job description and resume wherever possible. Avoid generic filler advice. Do not be falsely encouraging — if the match is weak, say so clearly in the scores and gaps.
 
@@ -45,9 +184,7 @@ Be economical with output tokens: keep every bullet point under ~14 words, keep 
 
 Respond with ONLY a single valid JSON object matching the required response schema. Do not include markdown formatting, code fences, or any text outside the JSON object.`;
 
-const RESPONSE_SCHEMA = {
-  type: "OBJECT",
-  properties: {
+  const properties = {
     company_name: { type: "STRING" },
     job_title: { type: "STRING" },
     ats_score: { type: "NUMBER", description: "Whole number percentage from 0 to 100. Never a 0-1 fraction." },
@@ -59,93 +196,45 @@ const RESPONSE_SCHEMA = {
         visa_sponsorship_concern: { type: "STRING" }
       },
       required: ["language_barrier", "visa_sponsorship_concern"]
-    },
-    missing_skills: { type: "ARRAY", items: { type: "STRING" } },
-    stage_1_attention_test: {
-      type: "OBJECT",
-      properties: {
-        stands_out: { type: "ARRAY", items: { type: "STRING" } },
-        forgettable: { type: "ARRAY", items: { type: "STRING" } }
-      },
-      required: ["stands_out", "forgettable"]
-    },
-    stage_2_mindset_breakdown: {
-      type: "OBJECT",
-      properties: {
-        weak_areas: { type: "ARRAY", items: { type: "STRING" } },
-        credibility_gaps: { type: "ARRAY", items: { type: "STRING" } }
-      },
-      required: ["weak_areas", "credibility_gaps"]
-    },
-    stage_3_tech_gap_table: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          technology: { type: "STRING" },
-          context: { type: "STRING" },
-          severity: { type: "STRING", enum: ["High", "Med", "Low"] }
-        },
-        required: ["technology", "context", "severity"]
-      }
-    },
-    why_good_fit: { type: "ARRAY", items: { type: "STRING" } },
-    resume_optimization: {
-      type: "OBJECT",
-      properties: {
-        add_skills: { type: "ARRAY", items: { type: "STRING" } },
-        remove_skills: { type: "ARRAY", items: { type: "STRING" } }
-      },
-      required: ["add_skills", "remove_skills"]
-    },
-    role_prep: {
-      type: "OBJECT",
-      properties: {
-        problem_solved: { type: "ARRAY", items: { type: "STRING" } },
-        expectations: { type: "ARRAY", items: { type: "STRING" } },
-        focus_areas: { type: "ARRAY", items: { type: "STRING" } },
-        interview_keywords: { type: "ARRAY", items: { type: "STRING" } }
-      },
-      required: ["problem_solved", "expectations", "focus_areas", "interview_keywords"]
-    },
-    company_insights: {
-      type: "OBJECT",
-      properties: {
-        core_business: { type: "ARRAY", items: { type: "STRING" } },
-        employee_count: { type: "STRING" },
-        years_in_market: { type: "STRING" },
-        interview_process: { type: "ARRAY", items: { type: "STRING" } },
-        work_environment: { type: "ARRAY", items: { type: "STRING" } },
-        glassdoor_rating: { type: "STRING" },
-        confidence_note: { type: "STRING" }
-      },
-      required: [
-        "core_business",
-        "employee_count",
-        "years_in_market",
-        "interview_process",
-        "work_environment",
-        "glassdoor_rating",
-        "confidence_note"
-      ]
     }
-  },
-  required: [
-    "company_name",
-    "job_title",
-    "ats_score",
-    "chance_of_getting_job",
-    "warnings",
-    "missing_skills",
-    "stage_1_attention_test",
-    "stage_2_mindset_breakdown",
-    "stage_3_tech_gap_table",
-    "why_good_fit",
-    "resume_optimization",
-    "role_prep",
-    "company_insights"
-  ]
-};
+  };
+  const required = ["company_name", "job_title", "ats_score", "chance_of_getting_job", "warnings"];
+
+  enabledSections.forEach((s) => {
+    Object.assign(properties, s.schema);
+    required.push(...Object.keys(s.schema));
+  });
+
+  return { systemPrompt, schema: { type: "OBJECT", properties, required } };
+}
+
+// Guards against stale/malformed storage (unknown ids from an older version,
+// a partial list missing a section entirely) by reconciling against the
+// current RESUME_SECTIONS registry — any section missing from saved data is
+// appended as enabled so newly-added sections aren't silently lost/hidden.
+function sanitizeSectionOrder(saved) {
+  if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_SECTION_ORDER.map((s) => ({ ...s }));
+  const validIds = new Set(RESUME_SECTIONS.map((s) => s.id));
+  const cleaned = saved.filter((s) => s && validIds.has(s.id)).map((s) => ({ id: s.id, enabled: s.enabled !== false }));
+  const present = new Set(cleaned.map((s) => s.id));
+  RESUME_SECTIONS.forEach((s) => {
+    if (!present.has(s.id)) cleaned.push({ id: s.id, enabled: true });
+  });
+  return cleaned;
+}
+
+// Hides disabled section blocks and re-orders the visible ones in the report
+// container to match Settings — reordering just re-appends existing DOM
+// nodes (appendChild moves rather than clones), no re-render of their data.
+function applySectionVisibilityAndOrder() {
+  resumeSectionOrder.forEach(({ id, enabled }) => {
+    const section = RESUME_SECTIONS.find((s) => s.id === id);
+    const block = section && document.getElementById(section.blockId);
+    if (!block) return;
+    block.classList.toggle("hidden", !enabled);
+    report.appendChild(block);
+  });
+}
 
 // ---------- Interview Prep prompts/schemas ----------
 // Independent from the resume matcher above: JD-only, no resume involved.
@@ -349,6 +438,11 @@ let perplexityModel = "";
 // independent of which keys happen to be configured. Persisted across
 // sessions since it's a standing preference, not per-job state.
 let prepSourceSelection = { gemini: true, tavily: true, deepseek: true, openai: true, perplexity: true };
+// Ordered list of { id, enabled } for the optional Resume Matcher report
+// sections — configured in Settings. Order determines both display order and
+// prompt step numbering; disabled sections are omitted from the Gemini call
+// entirely (see buildAnalysisPromptAndSchema), not just hidden after the fact.
+let resumeSectionOrder = DEFAULT_SECTION_ORDER.map((s) => ({ ...s }));
 let lastJobText = "";
 let lastJobUrl = "";
 let lastCompanyGuess = "";
@@ -448,7 +542,8 @@ async function init() {
     "perplexityKey",
     "perplexityModel",
     "prepSourceSelection",
-    "visibleTabs"
+    "visibleTabs",
+    "resumeSectionOrder"
   ]);
   apiKey = stored.geminiApiKey || "";
   masterResume = stored.masterResume || "";
@@ -462,6 +557,8 @@ async function init() {
   perplexityModel = stored.perplexityModel || "sonar";
   prepSourceSelection = { ...prepSourceSelection, ...(stored.prepSourceSelection || {}) };
   applyTabVisibility(stored.visibleTabs);
+  resumeSectionOrder = sanitizeSectionOrder(stored.resumeSectionOrder);
+  applySectionVisibilityAndOrder();
   resumeQuickEdit.value = masterResume;
   // Restore per-tab state (including any uploaded-resume override) before
   // computing button states, so a tab with an override but no saved master
@@ -608,6 +705,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.perplexityKey) perplexityKey = changes.perplexityKey.newValue || "";
   if (changes.perplexityModel) perplexityModel = changes.perplexityModel.newValue || "sonar";
   if (changes.visibleTabs) applyTabVisibility(changes.visibleTabs.newValue);
+  if (changes.resumeSectionOrder) {
+    resumeSectionOrder = sanitizeSectionOrder(changes.resumeSectionOrder.newValue);
+    applySectionVisibilityAndOrder();
+  }
   refreshSetupBanner();
   refreshSaveSheetsButton();
   refreshSourcePicker();
@@ -847,7 +948,8 @@ async function callGeminiWithFallback(systemPrompt, userPrompt, schema, onModelS
 
 async function analyzeWithGemini(jobText, onModelSwitch) {
   const userPrompt = `MASTER RESUME:\n"""\n${effectiveResume()}\n"""\n\nJOB DESCRIPTION:\n"""\n${jobText}\n"""`;
-  return callGeminiWithFallback(SYSTEM_PROMPT, userPrompt, RESPONSE_SCHEMA, onModelSwitch);
+  const { systemPrompt, schema } = buildAnalysisPromptAndSchema(resumeSectionOrder);
+  return callGeminiWithFallback(systemPrompt, userPrompt, schema, onModelSwitch);
 }
 
 // ---------- Rendering ----------

@@ -119,6 +119,35 @@
       color: var(--text);
     }
     .actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+    .section-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .section-row label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      font-weight: 400;
+      font-size: 13px;
+      flex: 1;
+      cursor: pointer;
+    }
+    .section-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+    .section-row .move-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 9px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+    .section-row .move-btn:disabled { opacity: 0.3; cursor: default; }
     .status {
       font-size: 12px;
       font-weight: 600;
@@ -174,6 +203,16 @@
       <div class="actions">
         <span class="status" id="tabVisibilityStatus"></span>
       </div>
+    </div>
+
+    <div class="card">
+      <label>Resume Matcher — Report Sections</label>
+      <div class="hint">
+        Turn off sections you don't use to cut Gemini output tokens — a disabled section is never
+        requested from the model at all, not just hidden. Use the arrows to reorder how sections
+        appear in the report.
+      </div>
+      <div id="resumeSectionsList" style="display:flex;flex-direction:column;gap:8px;margin-top:6px"></div>
     </div>
 
     <div class="card">

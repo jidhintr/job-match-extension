@@ -37,6 +37,81 @@ const tabVisCheckboxes = {
 };
 const DEFAULT_VISIBLE_TABS = { scan: true, matcher: true, prep: true, apply: true };
 
+// Mirrors the id/label pairs in sidepanel.js's RESUME_SECTIONS registry —
+// duplicated here since options.js and sidepanel.js are separate script
+// contexts with no shared module. Keep in sync if a section is added there.
+const RESUME_SECTION_LABELS = {
+  missing_skills: "Missing Skills",
+  resume_optimization: "Resume Optimization",
+  stage_1_attention_test: "Stage 1 — Attention Test",
+  stage_2_mindset_breakdown: "Stage 2 — Mindset Breakdown",
+  stage_3_tech_gap_table: "Stage 3 — Tech Gap Table",
+  why_good_fit: "Why You're a Good Fit",
+  role_prep: "Interview & Role Prep",
+  company_insights: "Company Insights"
+};
+const DEFAULT_SECTION_ORDER = Object.keys(RESUME_SECTION_LABELS).map((id) => ({ id, enabled: true }));
+const resumeSectionsList = document.getElementById("resumeSectionsList");
+let resumeSectionOrder = DEFAULT_SECTION_ORDER.map((s) => ({ ...s }));
+
+function sanitizeSectionOrder(saved) {
+  if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_SECTION_ORDER.map((s) => ({ ...s }));
+  const validIds = new Set(Object.keys(RESUME_SECTION_LABELS));
+  const cleaned = saved.filter((s) => s && validIds.has(s.id)).map((s) => ({ id: s.id, enabled: s.enabled !== false }));
+  const present = new Set(cleaned.map((s) => s.id));
+  Object.keys(RESUME_SECTION_LABELS).forEach((id) => {
+    if (!present.has(id)) cleaned.push({ id, enabled: true });
+  });
+  return cleaned;
+}
+
+async function saveResumeSectionOrder() {
+  await chrome.storage.local.set({ resumeSectionOrder });
+}
+
+function renderResumeSectionsList() {
+  resumeSectionsList.innerHTML = "";
+  resumeSectionOrder.forEach((entry, i) => {
+    const row = document.createElement("div");
+    row.className = "section-row";
+
+    const label = document.createElement("label");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = entry.enabled;
+    checkbox.addEventListener("change", async () => {
+      resumeSectionOrder[i].enabled = checkbox.checked;
+      await saveResumeSectionOrder();
+    });
+    label.append(checkbox, document.createTextNode(RESUME_SECTION_LABELS[entry.id] || entry.id));
+
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "move-btn";
+    upBtn.textContent = "▲";
+    upBtn.disabled = i === 0;
+    upBtn.addEventListener("click", async () => {
+      [resumeSectionOrder[i - 1], resumeSectionOrder[i]] = [resumeSectionOrder[i], resumeSectionOrder[i - 1]];
+      await saveResumeSectionOrder();
+      renderResumeSectionsList();
+    });
+
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "move-btn";
+    downBtn.textContent = "▼";
+    downBtn.disabled = i === resumeSectionOrder.length - 1;
+    downBtn.addEventListener("click", async () => {
+      [resumeSectionOrder[i + 1], resumeSectionOrder[i]] = [resumeSectionOrder[i], resumeSectionOrder[i + 1]];
+      await saveResumeSectionOrder();
+      renderResumeSectionsList();
+    });
+
+    row.append(label, upBtn, downBtn);
+    resumeSectionsList.appendChild(row);
+  });
+}
+
 function flashStatus(el, message, kind) {
   el.textContent = message;
   el.classList.remove("ok", "err");
@@ -60,9 +135,13 @@ async function loadSavedValues() {
     "openaiModel",
     "perplexityKey",
     "perplexityModel",
-    "visibleTabs"
+    "visibleTabs",
+    "resumeSectionOrder"
   ]);
   if (stored.geminiApiKey) apiKeyInput.value = stored.geminiApiKey;
+
+  resumeSectionOrder = sanitizeSectionOrder(stored.resumeSectionOrder);
+  renderResumeSectionsList();
 
   const visibleTabs = { ...DEFAULT_VISIBLE_TABS, ...(stored.visibleTabs || {}) };
   Object.entries(tabVisCheckboxes).forEach(([key, checkbox]) => {
