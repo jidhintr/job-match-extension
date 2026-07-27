@@ -38,7 +38,7 @@ import {
 } from "../ui/dom.js";
 import { createStatusLine } from "../ui/statusLine.js";
 import { renderReport, sanitizeSectionOrder, applySectionVisibilityAndOrder } from "./matcher.js";
-import { loadTrackerIfNeeded } from "./tracker.js";
+import { loadTrackerIfNeeded, refreshTrackerStatusOptions, sanitizeTrackerStatusOptions } from "./tracker.js";
 
 export function effectiveResume() {
   return state.tab.resumeOverride || state.settings.masterResume;
@@ -125,6 +125,8 @@ export async function init() {
   if (stored.customInstructions) {
     state.settings.customInstructions = { ...state.settings.customInstructions, ...stored.customInstructions };
   }
+  state.settings.trackerStatusOptions = sanitizeTrackerStatusOptions(stored.trackerStatusOptions);
+  refreshTrackerStatusOptions();
   resumeQuickEdit.value = state.settings.masterResume;
 
   await restoreTabState();
@@ -258,6 +260,10 @@ onSettingsChanged((changes) => {
   }
   if (changes.customInstructions) {
     state.settings.customInstructions = { ...state.settings.customInstructions, ...changes.customInstructions.newValue };
+  }
+  if (changes.trackerStatusOptions) {
+    state.settings.trackerStatusOptions = sanitizeTrackerStatusOptions(changes.trackerStatusOptions.newValue);
+    refreshTrackerStatusOptions();
   }
   refreshSetupBanner();
   refreshSaveSheetsButton();

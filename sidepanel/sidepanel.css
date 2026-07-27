@@ -1190,19 +1190,3 @@ h4.neutral:first-of-type { margin-top: 0; }
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path fill='%23ffffff' d='M0 0l5 6 5-6z'/></svg>");
 }
 
-.tracker-status-select.status-new {
-  background-color: rgba(76,141,255,0.18);
-  color: #4c8dff;
-}
-.tracker-status-select.status-pending {
-  background-color: rgba(217,154,61,0.2);
-  color: var(--yellow);
-}
-.tracker-status-select.status-applied {
-  background-color: rgba(52,192,123,0.2);
-  color: var(--green);
-}
-.tracker-status-select.status-rejected {
-  background-color: rgba(229,72,77,0.2);
-  color: var(--red);
-}

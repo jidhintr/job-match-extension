@@ -14,15 +14,15 @@ const SHEET_HEADERS = [
   "Missing Skills",       // Col G
   "Skills to Add",        // Col H
   "Skills to Remove",     // Col I
-  "Status"                // Col J - ["New", "Pending", "Applied", "Rejected"]
+  "Status"                // Col J - free text; the extension's Settings controls which labels are offered
 ];
 
-const STATUS_ENUM = ["New", "Pending", "Applied", "Rejected"];
 const STATUS_DEFAULT = "Pending";
 
 function createJsonResponse(payload) {
   const output = ContentService.createTextOutput(JSON.stringify(payload));
   output.setMimeType(ContentService.MimeType.JSON);
+  output.setHeader("Content-Type", "application/json");
   output.setHeader("Access-Control-Allow-Origin", "*");
   output.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   output.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -106,7 +106,7 @@ function handleJobUpsert(data) {
     data.missingSkills || "",                              // Col G: Missing Skills
     data.addSkills || data.skillsToAdd || "",              // Col H: Skills to Add
     data.removeSkills || data.skillsToRemove || "",        // Col I: Skills to Remove
-    data.status && STATUS_ENUM.includes(data.status) ? data.status : STATUS_DEFAULT // Col J: Status
+    data.status ? String(data.status).trim() : STATUS_DEFAULT // Col J: Status — any label the extension's Settings defines
   ];
 
   const rowIndex = findRowByJobUrl(sheet, jobUrl);
@@ -130,8 +130,8 @@ function handleJobUpsert(data) {
  */
 function updateJobStatus(data) {
   const status = String(data.status || "").trim();
-  if (!STATUS_ENUM.includes(status)) {
-    return { status: "error", message: `Invalid status '${status}'. Must be one of: ${STATUS_ENUM.join(", ")}` };
+  if (!status) {
+    return { status: "error", message: "Status is required." };
   }
 
   const sheet = getOrCreateSheet();

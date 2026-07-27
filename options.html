@@ -167,7 +167,7 @@
       cursor: pointer;
     }
     .section-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
-    .section-row .move-btn {
+.move-btn {
       background: transparent;
       border: 1px solid var(--border);
       color: var(--muted);
@@ -175,7 +175,28 @@
       font-size: 12px;
       border-radius: 6px;
     }
-    .section-row .move-btn:disabled { opacity: 0.3; cursor: default; }
+    .move-btn:disabled { opacity: 0.3; cursor: default; }
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    .status-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
+    .status-row input[type="text"] {
+      flex: 1;
+      width: auto;
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-size: 13px;
+      padding: 4px 2px;
+      outline: none;
+    }
+    .status-row .move-btn { flex-shrink: 0; }
     .status {
       font-size: 12px;
       font-weight: 600;
@@ -311,6 +332,18 @@
         </div>
         <div class="actions">
           <span class="status" id="tabVisibilityStatus"></span>
+        </div>
+      </div>
+    </details>
+
+    <details class="card" open>
+      <summary>Tracker Statuses</summary>
+      <div class="card-body">
+        <div class="hint">Rename, enable/disable, remove, or add statuses (up to 5) — these control the labels offered in the Tracker tab's filter and per-card dropdowns. Changes save automatically.</div>
+        <div id="trackerStatusRows" style="display:flex;flex-direction:column;gap:8px;margin-top:6px"></div>
+        <div class="actions">
+          <button type="button" id="addTrackerStatusBtn" class="ghost">+ Add Status</button>
+          <span class="status" id="trackerStatusOptionsStatus"></span>
         </div>
       </div>
     </details>

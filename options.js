@@ -38,6 +38,102 @@ const tabVisCheckboxes = {
 };
 const DEFAULT_VISIBLE_TABS = { scan: true, matcher: true, prep: true, apply: true, tracker: true };
 
+const trackerStatusOptionsStatus = document.getElementById("trackerStatusOptionsStatus");
+const trackerStatusRows = document.getElementById("trackerStatusRows");
+const addTrackerStatusBtn = document.getElementById("addTrackerStatusBtn");
+const MAX_TRACKER_STATUSES = 5;
+const DEFAULT_TRACKER_STATUS_OPTIONS = [
+  { label: "New", enabled: true },
+  { label: "Pending", enabled: true },
+  { label: "Applied", enabled: true },
+  { label: "Rejected", enabled: true }
+];
+let trackerStatusOptions = DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
+
+function sanitizeTrackerStatusOptions(saved) {
+  if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
+  const cleaned = saved
+    .filter((s) => s && typeof s.label === "string" && s.label.trim())
+    .slice(0, MAX_TRACKER_STATUSES)
+    .map((s) => ({ label: s.label.trim(), enabled: s.enabled !== false }));
+  return cleaned.length > 0 ? cleaned : DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
+}
+
+async function saveTrackerStatusOptions() {
+  await chrome.storage.local.set({ trackerStatusOptions });
+}
+
+function renderTrackerStatusRows() {
+  trackerStatusRows.innerHTML = "";
+  trackerStatusOptions.forEach((entry, i) => {
+    const row = document.createElement("div");
+    row.className = "status-row";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = entry.enabled;
+    checkbox.title = "Show in Tracker dropdowns";
+    checkbox.addEventListener("change", async () => {
+      const anyChecked = trackerStatusOptions.some((s, idx) => (idx === i ? checkbox.checked : s.enabled));
+      if (!anyChecked) {
+        checkbox.checked = true;
+        flashStatus(trackerStatusOptionsStatus, "At least one status must stay enabled.", "err");
+        return;
+      }
+      trackerStatusOptions[i].enabled = checkbox.checked;
+      await saveTrackerStatusOptions();
+      flashStatus(trackerStatusOptionsStatus, "Saved ✓", "ok");
+    });
+
+    const textInput = document.createElement("input");
+    textInput.type = "text";
+    textInput.value = entry.label;
+    textInput.maxLength = 24;
+    textInput.placeholder = "Status name";
+    const commitLabel = async () => {
+      const value = textInput.value.trim();
+      if (!value) {
+        textInput.value = trackerStatusOptions[i].label;
+        return;
+      }
+      trackerStatusOptions[i].label = value;
+      await saveTrackerStatusOptions();
+      flashStatus(trackerStatusOptionsStatus, "Saved ✓", "ok");
+    };
+    textInput.addEventListener("change", commitLabel);
+    textInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") textInput.blur();
+    });
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "move-btn";
+    removeBtn.textContent = "×";
+    removeBtn.title = "Remove status";
+    removeBtn.disabled = trackerStatusOptions.length <= 1;
+    removeBtn.addEventListener("click", async () => {
+      if (trackerStatusOptions.length <= 1) return;
+      trackerStatusOptions.splice(i, 1);
+      await saveTrackerStatusOptions();
+      renderTrackerStatusRows();
+      flashStatus(trackerStatusOptionsStatus, "Saved ✓", "ok");
+    });
+
+    row.append(checkbox, textInput, removeBtn);
+    trackerStatusRows.appendChild(row);
+  });
+
+  addTrackerStatusBtn.disabled = trackerStatusOptions.length >= MAX_TRACKER_STATUSES;
+}
+
+addTrackerStatusBtn.addEventListener("click", () => {
+  if (trackerStatusOptions.length >= MAX_TRACKER_STATUSES) return;
+  trackerStatusOptions.push({ label: "", enabled: true });
+  renderTrackerStatusRows();
+  const inputs = trackerStatusRows.querySelectorAll('input[type="text"]');
+  inputs[inputs.length - 1]?.focus();
+});
+
 const DEFAULT_MATCHER_INSTRUCTIONS = `The candidate speaks only English. If the job posting states fluency in another language (German, Dutch, French, Polish, etc.) as a MANDATORY/REQUIRED qualification — not merely a "nice to have" or an incidental mention like "collaborates with our Berlin office" — this is a hard disqualifying blocker.
 The candidate holds an EU Blue Card and is legally authorized to work in Poland without any visa or employer sponsorship, and is open to the general labor market (not tied to a single employer). For roles based outside Poland, the candidate can generally transfer their Blue Card to another EU country with minimal paperwork under EU intra-mobility rules. Do NOT treat "role is outside Poland" as a negative factor by itself, and do NOT lower chance_of_getting_job for it. ONLY flag it if the job posting explicitly states something like "no visa sponsorship," "must already be authorized to work locally," or "no relocation support" for a role outside Poland.`;
 
@@ -220,7 +316,8 @@ async function loadSavedValues() {
     "perplexityModel",
     "visibleTabs",
     "resumeSectionOrder",
-    "customInstructions"
+    "customInstructions",
+    "trackerStatusOptions"
   ]);
   if (stored.geminiApiKey) apiKeyInput.value = stored.geminiApiKey;
 
@@ -246,6 +343,9 @@ async function loadSavedValues() {
   Object.entries(tabVisCheckboxes).forEach(([key, checkbox]) => {
     if (checkbox) checkbox.checked = visibleTabs[key] !== false;
   });
+
+  trackerStatusOptions = sanitizeTrackerStatusOptions(stored.trackerStatusOptions);
+  renderTrackerStatusRows();
   if (stored.sheetsWebhookUrl) sheetsWebhookUrlInput.value = stored.sheetsWebhookUrl;
   if (stored.masterResume) resumeInput.value = stored.masterResume;
 

@@ -17,7 +17,10 @@ export const state = {
     // Overwritten by init() (features/bootstrap.js) before any feature that reads
     // it becomes reachable — see DEFAULT_SECTION_ORDER in features/matcher.js.
     resumeSectionOrder: [],
-    customInstructions: { matcher: DEFAULT_MATCHER_INSTRUCTIONS, prep: "", coverLetter: "", salary: "", scan: "" }
+    customInstructions: { matcher: DEFAULT_MATCHER_INSTRUCTIONS, prep: "", coverLetter: "", salary: "", scan: "" },
+    // Overwritten by init() (features/bootstrap.js) via sanitizeTrackerStatusOptions() —
+    // see DEFAULT_TRACKER_STATUS_OPTIONS in features/tracker.js.
+    trackerStatusOptions: []
   },
   tab: {
     currentTabId: null,

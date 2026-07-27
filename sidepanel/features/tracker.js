@@ -12,7 +12,92 @@ import {
 
 const setTrackerStatus = createStatusLine(trackerStatusLine);
 
-const STATUS_ENUM = ["New", "Pending", "Applied", "Rejected"];
+// Default seed only — the actual set is fully user-editable via Settings > Tracker Statuses
+// (rename, enable/disable, add up to MAX_TRACKER_STATUSES). google-apps-script.js no longer
+// enforces a fixed enum, so any label configured here is valid to send/store as-is.
+export const MAX_TRACKER_STATUSES = 5;
+export const DEFAULT_TRACKER_STATUS_OPTIONS = [
+  { label: "New", enabled: true },
+  { label: "Pending", enabled: true },
+  { label: "Applied", enabled: true },
+  { label: "Rejected", enabled: true }
+];
+
+// Colors are assigned by position in the configured list, not by name — that's what lets a
+// renamed status ("Open" instead of "New") keep a stable, distinguishing color.
+const STATUS_COLOR_PALETTE = ["#4c8dff", "#d99a3d", "#34c07b", "#e5484d", "#8b5cf6"];
+const UNKNOWN_STATUS_COLOR = "#8b90a0";
+
+export function sanitizeTrackerStatusOptions(saved) {
+  if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
+  const cleaned = saved
+    .filter((s) => s && typeof s.label === "string" && s.label.trim())
+    .slice(0, MAX_TRACKER_STATUSES)
+    .map((s) => ({ label: s.label.trim(), enabled: s.enabled !== false }));
+  return cleaned.length > 0 ? cleaned : DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
+}
+
+function configuredStatuses() {
+  return state.settings.trackerStatusOptions && state.settings.trackerStatusOptions.length > 0
+    ? state.settings.trackerStatusOptions
+    : DEFAULT_TRACKER_STATUS_OPTIONS;
+}
+
+function enabledStatuses() {
+  const enabled = configuredStatuses().filter((s) => s.enabled).map((s) => s.label);
+  return enabled.length > 0 ? enabled : configuredStatuses().map((s) => s.label);
+}
+
+// A card's own current status must always be selectable even if the user later disabled or
+// renamed it in Settings — otherwise changing any other card's status would silently reset this one.
+function statusOptionsForItem(currentStatus) {
+  const enabled = enabledStatuses();
+  return enabled.includes(currentStatus) ? enabled : [...enabled, currentStatus];
+}
+
+function colorForStatus(label) {
+  const idx = configuredStatuses().findIndex((s) => s.label === label);
+  return idx >= 0 ? STATUS_COLOR_PALETTE[idx % STATUS_COLOR_PALETTE.length] : UNKNOWN_STATUS_COLOR;
+}
+
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+function applyStatusColor(item, selectEl, cardEl) {
+  const color = colorForStatus(item.status);
+  selectEl.style.backgroundColor = hexToRgba(color, 0.2);
+  selectEl.style.color = color;
+  cardEl.style.setProperty("--rb-accent", color);
+}
+
+function renderStatusFilterOptions() {
+  const enabled = enabledStatuses();
+  const previous = trackerStatusFilter.value || state.tracker.statusFilter;
+  trackerStatusFilter.innerHTML = "";
+
+  const allOpt = document.createElement("option");
+  allOpt.value = "All";
+  allOpt.textContent = "All Statuses";
+  trackerStatusFilter.appendChild(allOpt);
+
+  enabled.forEach((s) => {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = s;
+    trackerStatusFilter.appendChild(opt);
+  });
+
+  state.tracker.statusFilter = previous === "All" || enabled.includes(previous) ? previous : "All";
+  trackerStatusFilter.value = state.tracker.statusFilter;
+}
+
+// Called on init and whenever Settings > Tracker Statuses changes.
+export function refreshTrackerStatusOptions() {
+  renderStatusFilterOptions();
+  renderTrackerList();
+}
 
 window.addEventListener("tracker:refresh", () => {
   if (!state.tracker.loading) {
@@ -90,10 +175,10 @@ function filteredSortedItems() {
   return sortItems(filtered);
 }
 
-async function changeStatus(item, newStatus, selectEl) {
+async function changeStatus(item, newStatus, selectEl, cardEl) {
   const previous = item.status;
   item.status = newStatus;
-  selectEl.className = `tracker-status-select status-${newStatus.toLowerCase()}`;
+  applyStatusColor(item, selectEl, cardEl);
   try {
     await postToSheets(state.settings.sheetsWebhookUrl, {
       type: "update_status",
@@ -105,7 +190,7 @@ async function changeStatus(item, newStatus, selectEl) {
     console.error(err);
     item.status = previous;
     selectEl.value = previous;
-    selectEl.className = `tracker-status-select status-${previous.toLowerCase()}`;
+    applyStatusColor(item, selectEl, cardEl);
     setTrackerStatus("Could not update status — check the webhook URL.", "err");
   }
 }
@@ -131,6 +216,9 @@ function appendTagRow(card, label, groups) {
 }
 
 function buildCard(item) {
+  const statusValue = item.status && String(item.status).trim() ? String(item.status).trim() : "Pending";
+  item.status = statusValue;
+
   const card = document.createElement("div");
   card.className = "prep-area-card tracker-card";
 
@@ -153,17 +241,17 @@ function buildCard(item) {
 
   titleGroup.append(titleLink, companyLine);
 
-  const statusValue = STATUS_ENUM.includes(item.status) ? item.status : "Pending";
   const statusSelect = document.createElement("select");
-  statusSelect.className = `tracker-status-select status-${statusValue.toLowerCase()}`;
-  STATUS_ENUM.forEach((s) => {
+  statusSelect.className = "tracker-status-select";
+  statusOptionsForItem(statusValue).forEach((s) => {
     const opt = document.createElement("option");
     opt.value = s;
     opt.textContent = s;
     if (s === statusValue) opt.selected = true;
     statusSelect.appendChild(opt);
   });
-  statusSelect.addEventListener("change", () => changeStatus(item, statusSelect.value, statusSelect));
+  applyStatusColor(item, statusSelect, card);
+  statusSelect.addEventListener("change", () => changeStatus(item, statusSelect.value, statusSelect, card));
 
   header.append(titleGroup, statusSelect);
 

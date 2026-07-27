@@ -28,7 +28,8 @@ export async function getSettings() {
     "prepSourceSelection",
     "visibleTabs",
     "resumeSectionOrder",
-    "customInstructions"
+    "customInstructions",
+    "trackerStatusOptions"
   ]);
 }
 
