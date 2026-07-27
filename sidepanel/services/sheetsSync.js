@@ -1,29 +1,45 @@
 export async function postToSheets(webhookUrl, payload) {
-  await fetch(webhookUrl, {
+  const res = await fetch(webhookUrl, {
     method: "POST",
-    mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    mode: "cors",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    credentials: "omit",
     body: JSON.stringify(payload)
   });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Sheets POST failed with HTTP ${res.status}: ${text || res.statusText}`);
+  }
 }
 
 // Plain GET against the Apps Script /exec endpoint — no AI involved, just reads the sheet.
 export async function fetchFromSheets(webhookUrl) {
-  const res = await fetch(webhookUrl, { method: "GET" });
+  const res = await fetch(webhookUrl, {
+    method: "GET",
+    mode: "cors",
+    headers: { Accept: "application/json" },
+    credentials: "omit",
+    cache: "no-store"
+  });
   const text = await res.text();
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    throw new Error("Sheets webhook returned an empty response. Verify the Apps Script web app is deployed and the webhook URL points to the deployed /exec endpoint.");
+  }
 
   let data;
   try {
-    data = JSON.parse(text);
+    data = JSON.parse(trimmed);
   } catch {
-    // Apps Script serves an HTML page (login/authorization prompt or a stack trace) instead of
-    // JSON when the deployment's "Who has access" isn't set to Anyone, or doGet() itself errored.
-    // res.url after redirects + a body snippet pinpoints which case this actually is.
-    console.error("Sheets GET returned non-JSON.", { requestedUrl: webhookUrl, finalUrl: res.url, redirected: res.redirected, httpStatus: res.status, bodySnippet: text.slice(0, 300) });
-    const redirectedToLogin = res.url.includes("accounts.google.com");
+    // Apps Script can return an HTML page (login prompt, stack trace, or deployment splash page)
+    // instead of JSON when the deployment permissions or URL are wrong.
+    console.error("Sheets GET returned non-JSON.", { requestedUrl: webhookUrl, finalUrl: res.url, redirected: res.redirected, httpStatus: res.status, bodySnippet: trimmed.slice(0, 300) });
+    const redirectedToLogin = (res.redirected && res.url.includes("accounts.google.com")) || trimmed.includes("accounts.google.com") || trimmed.includes("Sign in") || trimmed.includes("<html");
     const detail = redirectedToLogin
-      ? `redirected to a Google sign-in page (${res.url}) — deployment access isn't actually "Anyone" yet, or you edited a different deployment than the one this URL points to.`
-      : `HTTP ${res.status} at ${res.url}. Response started with: ${JSON.stringify(text.slice(0, 120))}`;
+      ? `the web app redirected to a Google sign-in page or returned HTML instead of JSON. Re-deploy the Apps Script web app with "Who has access: Anyone" and use the deployed /exec URL in Settings.`
+      : `HTTP ${res.status} at ${res.url}. Response started with: ${JSON.stringify(trimmed.slice(0, 140))}`;
     throw new Error(`Sheets webhook didn't return JSON — ${detail}`);
   }
 

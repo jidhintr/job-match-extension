@@ -494,6 +494,7 @@ async function saveResultToSheets() {
 
   try {
     await postToSheets(state.settings.sheetsWebhookUrl, payload);
+    window.dispatchEvent(new CustomEvent("tracker:refresh"));
     saveSheetsBtn.textContent = "✓ Saved to Google Sheets";
     saveSheetsBtn.classList.add("saved");
     setStatus("Sent to Google Sheets — check your sheet to confirm the row landed.", "ok");

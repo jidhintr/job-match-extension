@@ -151,6 +151,7 @@ async function saveScanResultsToSheet() {
       };
       await postToSheets(state.settings.sheetsWebhookUrl, payload);
     }
+    window.dispatchEvent(new CustomEvent("tracker:refresh"));
     saveScanBtn.textContent = "✓ Saved";
     setScanStatus("Saved to Job Tracker 26 sheet.", "ok");
   } catch (err) {

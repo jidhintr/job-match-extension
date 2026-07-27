@@ -14,6 +14,12 @@ const setTrackerStatus = createStatusLine(trackerStatusLine);
 
 const STATUS_ENUM = ["New", "Pending", "Applied", "Rejected"];
 
+window.addEventListener("tracker:refresh", () => {
+  if (!state.tracker.loading) {
+    loadTrackerData({ force: true });
+  }
+});
+
 function splitTags(value) {
   return String(value || "")
     .split(",")

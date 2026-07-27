@@ -20,6 +20,15 @@ const SHEET_HEADERS = [
 const STATUS_ENUM = ["New", "Pending", "Applied", "Rejected"];
 const STATUS_DEFAULT = "Pending";
 
+function createJsonResponse(payload) {
+  const output = ContentService.createTextOutput(JSON.stringify(payload));
+  output.setMimeType(ContentService.MimeType.JSON);
+  output.setHeader("Access-Control-Allow-Origin", "*");
+  output.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  output.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  return output;
+}
+
 /**
  * Gets or creates the single target sheet with frozen headers.
  */
@@ -171,6 +180,10 @@ function handleJobMatchList() {
  * POST Webhook entry point
  */
 function doPost(e) {
+  if (e && e.parameter && e.parameter.method === "OPTIONS") {
+    return createJsonResponse({ status: "ok" });
+  }
+
   try {
     const data = JSON.parse(e.postData.contents);
     let result;
@@ -182,25 +195,23 @@ function doPost(e) {
       result = handleJobUpsert(data);
     }
 
-    return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse(result);
   } catch (err) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ status: "error", message: String(err) }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse({ status: "error", message: String(err) });
   }
 }
 
 /**
  * GET Webhook entry point
  */
-function doGet() {
+function doGet(e) {
+  if (e && e.parameter && e.parameter.method === "OPTIONS") {
+    return createJsonResponse({ status: "ok" });
+  }
+
   try {
-    return ContentService
-      .createTextOutput(JSON.stringify(handleJobMatchList()))
-      .setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse(handleJobMatchList());
   } catch (err) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ status: "error", message: String(err) }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse({ status: "error", message: String(err) });
   }
 }
