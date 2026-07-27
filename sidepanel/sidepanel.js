@@ -4,5 +4,6 @@ import "./features/prep.js";
 import "./features/coverLetter.js";
 import "./features/salary.js";
 import "./features/scan.js";
+import "./features/tracker.js";
 
 init();

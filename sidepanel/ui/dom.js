@@ -52,7 +52,8 @@ export const matcherView = document.getElementById("matcherView");
 export const prepView = document.getElementById("prepView");
 export const applyView = document.getElementById("applyView");
 export const scanView = document.getElementById("scanView");
-export const tabViewsByName = { matcher: matcherView, prep: prepView, apply: applyView, scan: scanView };
+export const trackerView = document.getElementById("trackerView");
+export const tabViewsByName = { matcher: matcherView, prep: prepView, apply: applyView, scan: scanView, tracker: trackerView };
 export const tabButtonsByName = {};
 tabButtons.forEach((btn) => { tabButtonsByName[btn.dataset.tab] = btn; });
 export const coverLetterBtn = document.getElementById("coverLetterBtn");
@@ -64,6 +65,13 @@ export const scanAndFilterBtn = document.getElementById("scanAndFilterBtn");
 export const saveScanBtn = document.getElementById("saveScanBtn");
 export const scanStatusLine = document.getElementById("scanStatusLine");
 export const scanResultsList = document.getElementById("scanResultsList");
+
+export const trackerStatusFilter = document.getElementById("trackerStatusFilter");
+export const trackerSortSelect = document.getElementById("trackerSortSelect");
+export const refreshTrackerBtn = document.getElementById("refreshTrackerBtn");
+export const trackerStatusLine = document.getElementById("trackerStatusLine");
+export const trackerList = document.getElementById("trackerList");
+export const trackerEmptyState = document.getElementById("trackerEmptyState");
 
 export const generatePrepBtn = document.getElementById("generatePrepBtn");
 export const prepStatusLine = document.getElementById("prepStatusLine");

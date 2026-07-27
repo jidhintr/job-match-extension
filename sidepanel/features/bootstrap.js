@@ -38,6 +38,7 @@ import {
 } from "../ui/dom.js";
 import { createStatusLine } from "../ui/statusLine.js";
 import { renderReport, sanitizeSectionOrder, applySectionVisibilityAndOrder } from "./matcher.js";
+import { loadTrackerIfNeeded } from "./tracker.js";
 
 export function effectiveResume() {
   return state.tab.resumeOverride || state.settings.masterResume;
@@ -200,6 +201,7 @@ function activateTab(target) {
   Object.entries(tabViewsByName).forEach(([name, view]) => view.classList.toggle("hidden", name !== target));
   if (target === "apply") refreshApplyButtons();
   if (target === "scan") refreshScanButton();
+  if (target === "tracker") loadTrackerIfNeeded();
 }
 
 tabButtons.forEach((btn) => {
@@ -207,7 +209,7 @@ tabButtons.forEach((btn) => {
 });
 
 function applyTabVisibility(visibleTabs) {
-  const visible = { scan: true, matcher: true, prep: true, apply: true, ...(visibleTabs || {}) };
+  const visible = { scan: true, matcher: true, prep: true, apply: true, tracker: true, ...(visibleTabs || {}) };
   const anyVisible = Object.values(visible).some(Boolean);
 
   Object.entries(tabButtonsByName).forEach(([name, btn]) => {

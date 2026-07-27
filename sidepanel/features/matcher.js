@@ -477,7 +477,7 @@ async function saveResultToSheets() {
 
   const payload = {
     type: "job_match",
-    date: new Date().toISOString().slice(0, 10),
+    dateTime: new Date().toISOString().replace("T", " ").substring(0, 19),
     companyName: state.matcher.lastResult.company_name || "",
     jobTitle: state.matcher.lastResult.job_title || "",
     atsScore: Math.round(clampScore(state.matcher.lastResult.ats_score)),

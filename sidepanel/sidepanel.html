@@ -20,6 +20,7 @@
       <button class="tab-btn" id="tabBtnMatcher" data-tab="matcher" type="button">Resume Matcher</button>
       <button class="tab-btn" id="tabBtnPrep" data-tab="prep" type="button">Interview Prep</button>
       <button class="tab-btn" id="tabBtnApply" data-tab="apply" type="button">Cover Letter &amp; Salary</button>
+      <button class="tab-btn" id="tabBtnTracker" data-tab="tracker" type="button">Tracker</button>
     </div>
 
     <div id="setupBanner" class="setup-banner hidden">
@@ -383,6 +384,33 @@
         </div>
         <div id="scanStatusLine" class="status-line"></div>
         <div id="scanResultsList" class="prep-areas-list"></div>
+      </div>
+
+
+      <div id="trackerView" class="tab-view hidden">
+        <div class="tracker-toolbar">
+          <select id="trackerStatusFilter" class="tracker-select">
+            <option value="All">All Statuses</option>
+            <option value="New">New</option>
+            <option value="Pending">Pending</option>
+            <option value="Applied">Applied</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+          <select id="trackerSortSelect" class="tracker-select">
+            <option value="date-desc">Newest first</option>
+            <option value="date-asc">Oldest first</option>
+            <option value="company-asc">Company A–Z</option>
+            <option value="title-asc">Title A–Z</option>
+            <option value="status-asc">Status</option>
+          </select>
+          <button id="refreshTrackerBtn" class="icon-btn" type="button" title="Refresh from Google Sheets">⟳</button>
+        </div>
+        <div id="trackerStatusLine" class="status-line"></div>
+        <div id="trackerList" class="prep-areas-list"></div>
+        <div id="trackerEmptyState" class="empty-state hidden">
+          <div class="empty-icon">🗂️</div>
+          <p>No tracked jobs yet. Save a job match or scan result to see it here.</p>
+        </div>
       </div>
     </main>
   </div>

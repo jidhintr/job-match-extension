@@ -39,5 +39,12 @@ export const state = {
   },
   scan: {
     results: []
+  },
+  tracker: {
+    items: [],
+    loaded: false,
+    loading: false,
+    statusFilter: "All",
+    sortBy: "date-desc"
   }
 };

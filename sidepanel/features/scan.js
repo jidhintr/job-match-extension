@@ -137,22 +137,22 @@ async function saveScanResultsToSheet() {
   saveScanBtn.disabled = true;
   saveScanBtn.textContent = "Saving...";
 
-  const payload = {
-    type: "job_scan",
-    date: new Date().toISOString().slice(0, 10),
-    jobs: state.scan.results.map((job) => ({
-      title: job.title,
-      company: job.company,
-      url: job.url,
-      matchPercent: job.matchPercent,
-      status: job.checked ? "Applied" : "Pending"
-    }))
-  };
+  const dateTime = new Date().toISOString().replace("T", " ").substring(0, 19);
 
   try {
-    await postToSheets(state.settings.sheetsWebhookUrl, payload);
+    for (const job of state.scan.results) {
+      const payload = {
+        jobUrl: job.url,
+        dateTime,
+        companyName: job.company,
+        jobTitle: job.title,
+        atsScore: job.matchPercent,
+        status: job.checked ? "Applied" : "Pending"
+      };
+      await postToSheets(state.settings.sheetsWebhookUrl, payload);
+    }
     saveScanBtn.textContent = "✓ Saved";
-    setScanStatus("Saved to MatcherJobs sheet.", "ok");
+    setScanStatus("Saved to Job Tracker 26 sheet.", "ok");
   } catch (err) {
     console.error(err);
     setScanStatus("Could not save to Sheets. Check the webhook URL.", "err");

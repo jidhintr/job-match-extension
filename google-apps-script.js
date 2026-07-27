@@ -1,104 +1,187 @@
+/**
+ * JOB TRACKER 26 - UNIFIED APPS SCRIPT BACKEND
+ * Handles persistence, sync, and updates across devices into a single sheet.
+ */
 
-const MASTER_LOG_SHEET_NAME = "Job Match Log";
-const MASTER_LOG_HEADERS = ["Date", "Company Name", "Job Title", "ATS Score (%)", "Interview Chance (%)", "Missing Skills", "Job URL", "Status"];
+const SHEET_NAME = "Job Tracker 26";
+const SHEET_HEADERS = [
+  "Job URL",              // Col A - Primary Key
+  "DateTime",             // Col B
+  "Company Name",         // Col C
+  "Job Title",            // Col D
+  "ATS Score (%)",        // Col E
+  "Interview Chance (%)", // Col F
+  "Missing Skills",       // Col G
+  "Skills to Add",        // Col H
+  "Skills to Remove",     // Col I
+  "Status"                // Col J - ["New", "Pending", "Applied", "Rejected"]
+];
 
-const GAPS_SHEET_NAME = "Resume Gaps";
-const GAPS_SHEET_HEADERS = ["Job URL", "Date", "Company Name", "Job Title", "Missing Skills", "Skills to Add", "Skills to Remove"];
+const STATUS_ENUM = ["New", "Pending", "Applied", "Rejected"];
+const STATUS_DEFAULT = "Pending";
 
-const SCAN_JOBS_SHEET_NAME = "MatcherJobs";
-const SCAN_JOBS_HEADERS = ["Date", "Title", "Company", "URL", "Match %", "Status"];
-
-function getOrCreateSheet(name) {
+/**
+ * Gets or creates the single target sheet with frozen headers.
+ */
+function getOrCreateSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  return ss.getSheetByName(name) || ss.insertSheet(name);
-}
+  let sheet = ss.getSheetByName(SHEET_NAME);
 
-function ensureHeaders(sheet, headers) {
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAME);
+  }
+
+  // Set headers if blank
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(headers);
-    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+    sheet.appendRow(SHEET_HEADERS);
+    sheet.getRange(1, 1, 1, SHEET_HEADERS.length).setFontWeight("bold");
     sheet.setFrozenRows(1);
-    return;
-  }
-  const existingCount = sheet.getLastColumn();
-  if (existingCount < headers.length) {
-    const missing = headers.slice(existingCount);
-    sheet.getRange(1, existingCount + 1, 1, missing.length).setValues([missing]);
-    sheet.getRange(1, existingCount + 1, 1, missing.length).setFontWeight("bold");
-  }
-}
-
-function upsertGapRow(data) {
-  const sheet = getOrCreateSheet(GAPS_SHEET_NAME);
-  ensureHeaders(sheet, GAPS_SHEET_HEADERS);
-
-  const jobUrl = data.jobUrl || "";
-  const row = [
-    jobUrl,
-    data.date || "",
-    data.companyName || "",
-    data.jobTitle || "",
-    data.missingSkills || "",
-    data.addSkills || "",
-    data.removeSkills || ""
-  ];
-
-  const lastRow = sheet.getLastRow();
-  if (jobUrl && lastRow > 1) {
-    const urls = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-    for (let i = 0; i < urls.length; i++) {
-      if (urls[i][0] === jobUrl) {
-        sheet.getRange(i + 2, 1, 1, row.length).setValues([row]);
-        return;
-      }
+  } else {
+    // Ensure existing sheet matches header count if modified
+    const existingCount = sheet.getLastColumn();
+    if (existingCount < SHEET_HEADERS.length) {
+      const missing = SHEET_HEADERS.slice(existingCount);
+      sheet.getRange(1, existingCount + 1, 1, missing.length).setValues([missing]).setFontWeight("bold");
     }
   }
-  sheet.appendRow(row);
+
+  return sheet;
 }
 
-function handleJobMatchLog(data) {
-  const sheet = getOrCreateSheet(MASTER_LOG_SHEET_NAME);
-  ensureHeaders(sheet, MASTER_LOG_HEADERS);
-  sheet.appendRow([
-    data.date || "",
-    data.companyName || "",
-    data.jobTitle || "",
-    data.atsScore ?? "",
-    data.interviewChance ?? "",
-    data.missingSkills || "",
-    data.jobUrl || "",
-    data.status || "Applied"
-  ]);
-  upsertGapRow(data);
-  return { status: "ok", sheet: sheet.getName() };
+/**
+ * Formats standard JavaScript dates to ISO string format.
+ */
+function formatDateCell(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+  }
+  return value || new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
-function handleJobScanAppend(data) {
-  const sheet = getOrCreateSheet(SCAN_JOBS_SHEET_NAME);
-  ensureHeaders(sheet, SCAN_JOBS_HEADERS);
+/**
+ * Finds row index by Job URL (Column A).
+ * Returns -1 if not found.
+ */
+function findRowByJobUrl(sheet, jobUrl) {
+  const lastRow = sheet.getLastRow();
+  if (!jobUrl || lastRow < 2) return -1;
 
-  const jobs = Array.isArray(data.jobs) ? data.jobs : [];
-  const rows = jobs.map((j) => [
-    data.date || "",
-    j.title || "",
-    j.company || "",
-    j.url || "",
-    j.matchPercent ?? "",
-    j.status || ""
-  ]);
-  if (rows.length > 0) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, SCAN_JOBS_HEADERS.length).setValues(rows);
+  const urls = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < urls.length; i++) {
+    if (String(urls[i][0]).trim() === String(jobUrl).trim()) {
+      return i + 2; // Offset for 1-based index and header row
+    }
+  }
+  return -1;
+}
+
+/**
+ * Upsert job analysis payload into 'Job Tracker 26'.
+ * Direct code execution (0 AI tokens spent).
+ */
+function handleJobUpsert(data) {
+  const sheet = getOrCreateSheet();
+  const jobUrl = String(data.jobUrl || "").trim();
+
+  if (!jobUrl) {
+    return { status: "error", message: "Job URL is required." };
   }
 
-  return { status: "ok", sheet: sheet.getName(), rows: rows.length };
+  const rowValues = [
+    jobUrl,                                                 // Col A: Job URL
+    formatDateCell(data.dateTime || data.date),            // Col B: DateTime
+    data.companyName || "",                                // Col C: Company
+    data.jobTitle || "",                                   // Col D: Job Title
+    data.atsScore ?? "",                                   // Col E: ATS Score
+    data.interviewChance ?? "",                            // Col F: Interview Chance
+    data.missingSkills || "",                              // Col G: Missing Skills
+    data.addSkills || data.skillsToAdd || "",              // Col H: Skills to Add
+    data.removeSkills || data.skillsToRemove || "",        // Col I: Skills to Remove
+    data.status && STATUS_ENUM.includes(data.status) ? data.status : STATUS_DEFAULT // Col J: Status
+  ];
+
+  const rowIndex = findRowByJobUrl(sheet, jobUrl);
+
+  if (rowIndex !== -1) {
+    // Preserve existing status if status was not explicitly passed
+    if (!data.status) {
+      const existingStatus = sheet.getRange(rowIndex, 10).getValue();
+      if (existingStatus) rowValues[9] = existingStatus;
+    }
+    sheet.getRange(rowIndex, 1, 1, rowValues.length).setValues([rowValues]);
+    return { status: "ok", action: "updated", row: rowIndex };
+  } else {
+    sheet.appendRow(rowValues);
+    return { status: "ok", action: "appended", row: sheet.getLastRow() };
+  }
 }
 
+/**
+ * Fast status updates from UI Card controls.
+ */
+function updateJobStatus(data) {
+  const status = String(data.status || "").trim();
+  if (!STATUS_ENUM.includes(status)) {
+    return { status: "error", message: `Invalid status '${status}'. Must be one of: ${STATUS_ENUM.join(", ")}` };
+  }
+
+  const sheet = getOrCreateSheet();
+  const rowIndex = findRowByJobUrl(sheet, data.jobUrl);
+
+  if (rowIndex === -1) {
+    return { status: "error", message: "Job URL not found in sheet." };
+  }
+
+  sheet.getRange(rowIndex, 10).setValue(status); // Col J = Status
+  return { status: "ok", action: "status_updated", row: rowIndex, newStatus: status };
+}
+
+/**
+ * Fetches all jobs to populate UI Cards on the 'Tracker' tab.
+ */
+function handleJobMatchList() {
+  const sheet = getOrCreateSheet();
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) {
+    return { status: "ok", items: [] };
+  }
+
+  const rows = sheet.getRange(2, 1, lastRow - 1, SHEET_HEADERS.length).getValues();
+
+  const items = rows
+    .filter((row) => row[0]) // Ensure Job URL exists
+    .map((row) => ({
+      jobUrl: row[0],
+      dateTime: formatDateCell(row[1]),
+      companyName: row[2],
+      jobTitle: row[3],
+      atsScore: row[4],
+      interviewChance: row[5],
+      missingSkills: row[6],
+      addSkills: row[7],
+      removeSkills: row[8],
+      status: row[9] || STATUS_DEFAULT
+    }));
+
+  return { status: "ok", items };
+}
+
+/**
+ * POST Webhook entry point
+ */
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     let result;
-    if (data.type === "job_scan") result = handleJobScanAppend(data);
-    else result = handleJobMatchLog(data);
+
+    if (data.type === "update_status" || data.type === "update_gap_status") {
+      result = updateJobStatus(data);
+    } else {
+      // Default action: save/update full job entry
+      result = handleJobUpsert(data);
+    }
+
     return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService
@@ -107,8 +190,17 @@ function doPost(e) {
   }
 }
 
+/**
+ * GET Webhook entry point
+ */
 function doGet() {
-  return ContentService
-    .createTextOutput(JSON.stringify({ status: "ok", sheet: MASTER_LOG_SHEET_NAME }))
-    .setMimeType(ContentService.MimeType.JSON);
+  try {
+    return ContentService
+      .createTextOutput(JSON.stringify(handleJobMatchList()))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: "error", message: String(err) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
