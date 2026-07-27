@@ -50,13 +50,20 @@ export function hasUsableResume() {
 export const setStatus = createStatusLine(statusLine);
 export const setApplyStatus = createStatusLine(applyStatusLine);
 
-async function restoreTabState() {
+async function getActiveTabId() {
   try {
-    const tab = await chrome.tabs.getCurrent();
-    state.tab.currentTabId = tab?.id ?? null;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab?.id ?? null;
   } catch {
-    state.tab.currentTabId = null;
+    return null;
   }
+}
+
+// The side panel is a global, non-tab-scoped view (see background.js), so it isn't itself a tab —
+// chrome.tabs.getCurrent() always returns undefined here. Track the active tab explicitly instead,
+// and keep it in sync via onActivated below, so per-tab session storage keys stay correct.
+async function restoreTabState() {
+  state.tab.currentTabId = await getActiveTabId();
   if (state.tab.currentTabId == null) return;
 
   const saved = await getTabState(state.tab.currentTabId);
@@ -77,6 +84,10 @@ async function restoreTabState() {
   refreshSaveSheetsButton();
   refreshApplyButtons();
 }
+
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  state.tab.currentTabId = tabId;
+});
 
 export async function persistTabSessionState() {
   if (state.tab.currentTabId == null) return;

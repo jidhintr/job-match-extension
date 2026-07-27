@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Analyzes job descriptions against your resume using AI from a Chrome side panel.",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
+  "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "background.js"
   },
@@ -25,5 +26,21 @@
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"
   },
-  "options_page": "options.html"
+  "options_page": "options.html",
+  "commands": {
+    "open-side-panel": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+J",
+        "mac": "Command+Shift+J"
+      },
+      "description": "Open the MatchResumer side panel"
+    },
+    "analyze-resume": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+A",
+        "mac": "Command+Shift+A"
+      },
+      "description": "Analyze the current page (Resume Matcher)"
+    }
+  }
 }

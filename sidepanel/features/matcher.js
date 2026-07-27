@@ -507,3 +507,10 @@ async function saveResultToSheets() {
 analyzeBtn.addEventListener("click", () => runAnalysis({ reextract: true }));
 reanalyzeBtn.addEventListener("click", () => runAnalysis({ reextract: false }));
 saveSheetsBtn.addEventListener("click", saveResultToSheets);
+
+// Triggered by the "analyze-resume" keyboard shortcut (background.js) once the side panel is open.
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === "JOB_MATCH_SHORTCUT_ANALYZE") {
+    runAnalysis({ reextract: true });
+  }
+});
