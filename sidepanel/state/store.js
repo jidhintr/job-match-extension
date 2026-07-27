@@ -35,8 +35,7 @@ export const state = {
     jobUrl: "",
     companyName: "",
     jobTitle: "",
-    recruiterNotes: "",
-    autoSaveTimer: null
+    recruiterNotes: ""
   },
   scan: {
     results: []

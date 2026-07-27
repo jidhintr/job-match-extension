@@ -2,16 +2,11 @@
 const MASTER_LOG_SHEET_NAME = "Job Match Log";
 const MASTER_LOG_HEADERS = ["Date", "Company Name", "Job Title", "ATS Score (%)", "Interview Chance (%)", "Missing Skills", "Job URL", "Status"];
 
-const COMPANY_SHEET_HEADERS = ["Question"];
+const GAPS_SHEET_NAME = "Resume Gaps";
+const GAPS_SHEET_HEADERS = ["Job URL", "Date", "Company Name", "Job Title", "Missing Skills", "Skills to Add", "Skills to Remove"];
 
 const SCAN_JOBS_SHEET_NAME = "MatcherJobs";
 const SCAN_JOBS_HEADERS = ["Date", "Title", "Company", "URL", "Match %", "Status"];
-
-function sanitizeSheetName(name) {
-  
-  const cleaned = String(name || "Unknown Company").replace(/[:\\\/\?\*\[\]]/g, " ").trim();
-  return cleaned.slice(0, 100) || "Unknown Company";
-}
 
 function getOrCreateSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -25,15 +20,40 @@ function ensureHeaders(sheet, headers) {
     sheet.setFrozenRows(1);
     return;
   }
-  
-  
-  
   const existingCount = sheet.getLastColumn();
   if (existingCount < headers.length) {
     const missing = headers.slice(existingCount);
     sheet.getRange(1, existingCount + 1, 1, missing.length).setValues([missing]);
     sheet.getRange(1, existingCount + 1, 1, missing.length).setFontWeight("bold");
   }
+}
+
+function upsertGapRow(data) {
+  const sheet = getOrCreateSheet(GAPS_SHEET_NAME);
+  ensureHeaders(sheet, GAPS_SHEET_HEADERS);
+
+  const jobUrl = data.jobUrl || "";
+  const row = [
+    jobUrl,
+    data.date || "",
+    data.companyName || "",
+    data.jobTitle || "",
+    data.missingSkills || "",
+    data.addSkills || "",
+    data.removeSkills || ""
+  ];
+
+  const lastRow = sheet.getLastRow();
+  if (jobUrl && lastRow > 1) {
+    const urls = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (let i = 0; i < urls.length; i++) {
+      if (urls[i][0] === jobUrl) {
+        sheet.getRange(i + 2, 1, 1, row.length).setValues([row]);
+        return;
+      }
+    }
+  }
+  sheet.appendRow(row);
 }
 
 function handleJobMatchLog(data) {
@@ -49,34 +69,8 @@ function handleJobMatchLog(data) {
     data.jobUrl || "",
     data.status || "Applied"
   ]);
+  upsertGapRow(data);
   return { status: "ok", sheet: sheet.getName() };
-}
-
-function handleInterviewPrepSync(data) {
-  const sheetName = sanitizeSheetName(data.companyName);
-  const sheet = getOrCreateSheet(sheetName);
-  ensureHeaders(sheet, COMPANY_SHEET_HEADERS);
-
-  const areas = Array.isArray(data.areas) ? data.areas : [];
-  const questionTexts = [];
-  areas.forEach((area) => {
-    const questions = Array.isArray(area.questions) ? area.questions : [];
-    questions.forEach((q) => {
-      if (q.text) questionTexts.push([q.text]);
-    });
-  });
-
-  
-  
-  const lastRow = sheet.getLastRow();
-  if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
-  }
-  if (questionTexts.length > 0) {
-    sheet.getRange(2, 1, questionTexts.length, 1).setValues(questionTexts);
-  }
-
-  return { status: "ok", sheet: sheet.getName(), rows: questionTexts.length };
 }
 
 function handleJobScanAppend(data) {
@@ -103,8 +97,7 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     let result;
-    if (data.type === "interview_prep") result = handleInterviewPrepSync(data);
-    else if (data.type === "job_scan") result = handleJobScanAppend(data);
+    if (data.type === "job_scan") result = handleJobScanAppend(data);
     else result = handleJobMatchLog(data);
     return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {

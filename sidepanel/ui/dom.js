@@ -75,7 +75,6 @@ export const prepDonutLegend = document.getElementById("prepDonutLegend");
 export const prepAreasList = document.getElementById("prepAreasList");
 export const prepRecruiterInsights = document.getElementById("prepRecruiterInsights");
 export const updateFocusBtn = document.getElementById("updateFocusBtn");
-export const savePrepSheetsBtn = document.getElementById("savePrepSheetsBtn");
 export const prepJobIdentity = document.getElementById("prepJobIdentity");
 export const prepJobTitleEl = document.getElementById("prepJobTitleValue");
 export const prepCompanyNameEl = document.getElementById("prepCompanyNameValue");

@@ -1,6 +1,5 @@
 import { state } from "../state/store.js";
 import { callGeminiWithFallback, isRetryableError, formatModelRetryMessage } from "../services/geminiClient.js";
-import { postToSheets } from "../services/sheetsSync.js";
 import { setPrepJobState } from "../services/storage.js";
 import { extractJobTextFromActiveTab, askInTab, ANSWER_PROVIDER_URLS } from "../services/tabMessaging.js";
 import { buildEditablePrompt } from "../services/promptHelpers.js";
@@ -11,7 +10,6 @@ import {
   prepStatusLine,
   generatePrepBtn,
   updateFocusBtn,
-  savePrepSheetsBtn,
   prepDashboard,
   prepProgressValue,
   prepProgressFill,
@@ -156,67 +154,6 @@ async function savePrepState() {
     jobTitle: state.prep.jobTitle,
     savedAt: Date.now()
   });
-}
-
-function refreshPrepSheetsButton() {
-  if (!savePrepSheetsBtn) return;
-  const enabled = !!state.settings.sheetsWebhookUrl && state.prep.areas.length > 0 && !!state.prep.jobUrl;
-  savePrepSheetsBtn.disabled = !enabled;
-  savePrepSheetsBtn.title = enabled ? "" : "Add a Google Sheets Webhook URL and generate prep to save progress.";
-}
-
-function schedulePrepSheetSave() {
-  if (!state.settings.sheetsWebhookUrl || !state.prep.jobUrl || state.prep.areas.length === 0) return;
-  if (state.prep.autoSaveTimer) clearTimeout(state.prep.autoSaveTimer);
-  state.prep.autoSaveTimer = setTimeout(() => {
-    savePrepProgressToSheets({ silent: true });
-    state.prep.autoSaveTimer = null;
-  }, 600);
-}
-
-async function savePrepProgressToSheets({ silent } = {}) {
-  if (!state.settings.sheetsWebhookUrl || !state.prep.areas.length || !state.prep.jobUrl) return;
-
-  const payload = {
-    type: "interview_prep",
-    date: new Date().toISOString().slice(0, 10),
-    companyName: state.prep.companyName || state.matcher.lastResult?.company_name || state.matcher.lastCompanyGuess || "Unknown Company",
-    jobTitle: state.prep.jobTitle || state.matcher.lastResult?.job_title || "Unknown Role",
-    jobUrl: state.matcher.lastJobUrl || state.prep.jobUrl || "",
-    progressPercent: computePrepProgress(),
-    recruiterInsights: state.prep.recruiterNotes || "",
-    areas: state.prep.areas.map((area) => ({
-      title: area.title,
-      predictedRound: area.predictedRound,
-      weightPercent: area.weightPercent,
-      completed: area.masterChecked || false,
-      questions: area.questions.map((q) => ({
-        text: q.text,
-        checked: q.checked,
-        category: q.category || "",
-        difficulty: q.difficulty || "",
-        frequency: q.frequency || ""
-      }))
-    }))
-  };
-
-  try {
-    await postToSheets(state.settings.sheetsWebhookUrl, payload);
-    if (!silent) {
-      savePrepSheetsBtn.textContent = "✓ Saved to Sheet";
-      savePrepSheetsBtn.classList.add("saved");
-      setPrepStatus("Prep progress sent to Google Sheets.", "ok");
-      setTimeout(() => {
-        savePrepSheetsBtn.textContent = "💾 Save Progress to Sheet";
-        refreshPrepSheetsButton();
-      }, 2200);
-    }
-  } catch (err) {
-    console.error(err);
-    if (!silent) {
-      setPrepStatus("Could not save prep progress to Sheets. Check the webhook URL.", "err");
-    }
-  }
 }
 
 const setPrepStatus = createStatusLine(prepStatusLine);
@@ -397,7 +334,6 @@ function toggleQuestion(area, question, checked, liEl, masterCheckboxEl) {
   if (masterCheckboxEl) masterCheckboxEl.checked = area.masterChecked;
   renderPrepProgress();
   savePrepState();
-  schedulePrepSheetSave();
 }
 
 function toggleAreaMaster(area, checked, questionsListEl) {
@@ -412,7 +348,6 @@ function toggleAreaMaster(area, checked, questionsListEl) {
   });
   renderPrepProgress();
   savePrepState();
-  schedulePrepSheetSave();
 }
 
 async function geminiScanQuestions(area) {
@@ -631,7 +566,6 @@ function renderPrepAreas() {
   renderPrepDonut(state.prep.areas);
   renderPrepDonutLegend(state.prep.areas);
   renderPrepProgress();
-  refreshPrepSheetsButton();
   prepDashboard.classList.toggle("hidden", !hasAreas);
   generatePrepBtn.classList.remove("hidden");
 }
@@ -681,9 +615,6 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
     ]);
     renderPrepAreas();
     await savePrepState();
-    if (state.settings.sheetsWebhookUrl) {
-      await savePrepProgressToSheets({ silent: true });
-    }
     setPrepStatus("Interview prep generated.", "ok");
   } catch (err) {
     console.error(err);
@@ -698,4 +629,3 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
 
 generatePrepBtn.addEventListener("click", () => runGeneratePrep());
 updateFocusBtn?.addEventListener("click", () => runGeneratePrep({ forceRegenerate: true }));
-savePrepSheetsBtn?.addEventListener("click", () => savePrepProgressToSheets({ silent: false }));

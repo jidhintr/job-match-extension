@@ -472,6 +472,9 @@ async function runAnalysis({ reextract }) {
 async function saveResultToSheets() {
   if (!state.settings.sheetsWebhookUrl || !state.matcher.lastResult) return;
 
+  const addSkills = state.matcher.lastResult.resume_optimization?.add_skills;
+  const removeSkills = state.matcher.lastResult.resume_optimization?.remove_skills;
+
   const payload = {
     type: "job_match",
     date: new Date().toISOString().slice(0, 10),
@@ -480,6 +483,8 @@ async function saveResultToSheets() {
     atsScore: Math.round(clampScore(state.matcher.lastResult.ats_score)),
     interviewChance: Math.round(clampScore(state.matcher.lastResult.chance_of_getting_job)),
     missingSkills: Array.isArray(state.matcher.lastResult.missing_skills) ? state.matcher.lastResult.missing_skills.join(", ") : "",
+    addSkills: Array.isArray(addSkills) ? addSkills.join(", ") : "",
+    removeSkills: Array.isArray(removeSkills) ? removeSkills.join(", ") : "",
     jobUrl: state.matcher.lastJobUrl || ""
   };
 
