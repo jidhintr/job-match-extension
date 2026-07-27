@@ -50,6 +50,16 @@ export function hasUsableResume() {
 export const setStatus = createStatusLine(statusLine);
 export const setApplyStatus = createStatusLine(applyStatusLine);
 
+// background.js gives every http/https tab its own dedicated side panel document, with that tab's
+// id baked into the URL as ?tabId=. Reading it here (rather than querying "the active tab") is
+// what makes this document's identity fixed to its own tab regardless of which tab the user is
+// currently looking at — required for concurrent, non-clobbering analyses across tabs.
+function getScopedTabIdFromUrl() {
+  const raw = new URLSearchParams(location.search).get("tabId");
+  const id = raw != null ? Number(raw) : NaN;
+  return Number.isFinite(id) ? id : null;
+}
+
 async function getActiveTabId() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -59,11 +69,10 @@ async function getActiveTabId() {
   }
 }
 
-// The side panel is a global, non-tab-scoped view (see background.js), so it isn't itself a tab —
-// chrome.tabs.getCurrent() always returns undefined here. Track the active tab explicitly instead,
-// and keep it in sync via onActivated below, so per-tab session storage keys stay correct.
 async function restoreTabState() {
-  state.tab.currentTabId = await getActiveTabId();
+  // Fall back to an active-tab query only if this document was somehow opened without the
+  // tabId query param (e.g. manually navigated to sidepanel.html).
+  state.tab.currentTabId = getScopedTabIdFromUrl() ?? (await getActiveTabId());
   if (state.tab.currentTabId == null) return;
 
   const saved = await getTabState(state.tab.currentTabId);
@@ -84,10 +93,6 @@ async function restoreTabState() {
   refreshSaveSheetsButton();
   refreshApplyButtons();
 }
-
-chrome.tabs.onActivated.addListener(({ tabId }) => {
-  state.tab.currentTabId = tabId;
-});
 
 export async function persistTabSessionState() {
   if (state.tab.currentTabId == null) return;

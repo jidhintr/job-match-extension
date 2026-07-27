@@ -509,8 +509,11 @@ reanalyzeBtn.addEventListener("click", () => runAnalysis({ reextract: false }));
 saveSheetsBtn.addEventListener("click", saveResultToSheets);
 
 // Triggered by the "analyze-resume" keyboard shortcut (background.js) once the side panel is open.
+// Every tab's panel instance receives this message, so only act if it's tagged for THIS tab —
+// otherwise triggering the shortcut in one tab would also kick off analysis in every other tab's
+// panel that happens to be open.
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type === "JOB_MATCH_SHORTCUT_ANALYZE") {
+  if (message?.type === "JOB_MATCH_SHORTCUT_ANALYZE" && message.tabId === state.tab.currentTabId) {
     runAnalysis({ reextract: true });
   }
 });
