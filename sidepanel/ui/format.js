@@ -14,3 +14,10 @@ export function slugify(text, index) {
   const base = (text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
   return base ? `${base}-${index}` : `area-${index}`;
 }
+
+export function splitCsv(value) {
+  return String(value || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}

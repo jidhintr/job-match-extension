@@ -3,7 +3,8 @@ import { callGeminiWithFallback, isRetryableError, formatModelRetryMessage } fro
 import { postToSheets } from "../services/sheetsSync.js";
 import { extractJobTextFromActiveTab } from "../services/tabMessaging.js";
 import { fillList, fillPills, fillTechGapTable } from "../ui/renderHelpers.js";
-import { clampScore } from "../ui/format.js";
+import { clampScore, splitCsv } from "../ui/format.js";
+import { findSavedJobByUrl } from "./tracker.js";
 import {
   analyzeBtn,
   reanalyzeBtn,
@@ -164,6 +165,10 @@ export const RESUME_SECTIONS = [
 ];
 
 export const DEFAULT_SECTION_ORDER = RESUME_SECTIONS.map((s) => ({ id: s.id, enabled: true }));
+
+// The sections a sheet-reconstructed summary has no data for — see renderReport()'s
+// isPartialFromSheet check.
+const DEEP_ANALYSIS_BLOCK_IDS = ["stage1Block", "stage2Block", "stage3Block", "goodFitBlock", "rolePrepBlock", "companyInsightsBlock"];
 
 function buildAnalysisPromptAndSchema(sectionOrder) {
   const enabledIds = (sectionOrder || DEFAULT_SECTION_ORDER).filter((s) => s.enabled).map((s) => s.id);
@@ -420,8 +425,34 @@ export function renderReport(result) {
   document.getElementById("companyConfidenceNote").textContent =
     insights.confidence_note || "AI-generated estimate — verify current details on Glassdoor/LinkedIn.";
 
+  // A sheet-reconstructed summary (see buildResultFromSheetItem) never has stage_1_attention_test —
+  // a real Gemini result always does, since it's a required schema field. Use that as the signal to
+  // hide the deep-dive sections entirely instead of showing them empty with no data behind them.
+  const isPartialFromSheet = !result.stage_1_attention_test;
+  DEEP_ANALYSIS_BLOCK_IDS.forEach((id) => {
+    document.getElementById(id)?.classList.toggle("hidden", isPartialFromSheet);
+  });
+  if (!isPartialFromSheet) applySectionVisibilityAndOrder();
+
   report.classList.remove("hidden");
   emptyState.classList.add("hidden");
+}
+
+// Reconstructs a renderReport()-shaped result from what was actually persisted to the sheet —
+// only the score gauges, missing skills, and add/remove skills pills. The deep-dive sections
+// (attention test, mindset breakdown, tech gap table, good fit, role prep, company insights)
+// were never saved anywhere, so they render as their normal "not enough information" placeholders
+// until the user explicitly runs Re-Analyze to spend tokens on a full report.
+export function buildResultFromSheetItem(item) {
+  return {
+    company_name: item.companyName || "",
+    job_title: item.jobTitle || "",
+    ats_score: Number(item.atsScore) || 0,
+    chance_of_getting_job: Number(item.interviewChance) || 0,
+    warnings: { language_barrier: "", visa_sponsorship_concern: "" },
+    missing_skills: splitCsv(item.missingSkills),
+    resume_optimization: { add_skills: splitCsv(item.addSkills), remove_skills: splitCsv(item.removeSkills) }
+  };
 }
 
 async function runAnalysis({ reextract }) {
@@ -436,10 +467,34 @@ async function runAnalysis({ reextract }) {
     setBusy(true, willReextract ? "Reading the page..." : "Re-analyzing with updated resume...");
 
     if (willReextract) {
+      const previousJobUrl = state.matcher.lastJobUrl;
+      const alreadyShowingSheetSummary = state.matcher.savedToSheets && !!state.matcher.lastResult;
+
       const extracted = await extractJobTextFromActiveTab(state.tab.currentTabId);
       state.matcher.lastJobText = extracted.text;
       state.matcher.lastCompanyGuess = extracted.company;
       state.matcher.lastJobUrl = extracted.url;
+
+      // Only the fresh "Analyze Current Page" path checks Sheets first — Re-Analyze (reextract
+      // false) is an explicit request to spend tokens on a full re-run even if a summary exists.
+      // If Analyze is clicked again for the same job that's already showing a sheet summary
+      // (including one restored passively on panel open, before any text was ever extracted),
+      // treat that as the user asking for the full report instead of re-serving the same summary
+      // forever — otherwise there'd be no way to reach a real analysis once a sheet row exists.
+      const clickingAnalyzeAgainForSameJob = alreadyShowingSheetSummary && previousJobUrl === extracted.url;
+
+      if (reextract && !clickingAnalyzeAgainForSameJob) {
+        const saved = await findSavedJobByUrl(extracted.url);
+        if (saved) {
+          const result = buildResultFromSheetItem(saved);
+          renderReport(result);
+          state.matcher.lastResult = result;
+          state.matcher.savedToSheets = true;
+          setStatus("Loaded saved summary from Google Sheets (no tokens used) — click Analyze again for the full report.", "ok");
+          await persistTabSessionState();
+          return;
+        }
+      }
     }
 
     if (!state.matcher.lastJobText || state.matcher.lastJobText.length < 50) {
@@ -453,6 +508,7 @@ async function runAnalysis({ reextract }) {
 
     renderReport(result);
     state.matcher.lastResult = result;
+    state.matcher.savedToSheets = false;
     setStatus("Analysis complete.", "ok");
     await persistTabSessionState();
   } catch (err) {
@@ -495,6 +551,8 @@ async function saveResultToSheets() {
   try {
     await postToSheets(state.settings.sheetsWebhookUrl, payload);
     window.dispatchEvent(new CustomEvent("tracker:refresh"));
+    state.matcher.savedToSheets = true;
+    await persistTabSessionState();
     saveSheetsBtn.textContent = "✓ Saved to Google Sheets";
     saveSheetsBtn.classList.add("saved");
     setStatus("Sent to Google Sheets — check your sheet to confirm the row landed.", "ok");
@@ -503,8 +561,10 @@ async function saveResultToSheets() {
     saveSheetsBtn.textContent = "💾 Save to Google Sheets";
     setStatus("Couldn't reach the Sheets webhook — check the URL in Settings.", "err");
   } finally {
+    // refreshSaveSheetsButton() (not a hardcoded label) so the button stays correctly disabled
+    // and labeled "✓ Saved..." afterwards if savedToSheets is true, instead of reverting to a
+    // clickable state that would invite saving the same row again.
     setTimeout(() => {
-      saveSheetsBtn.textContent = "💾 Save to Google Sheets";
       refreshSaveSheetsButton();
     }, 2500);
   }

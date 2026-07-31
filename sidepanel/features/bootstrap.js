@@ -37,8 +37,8 @@ import {
   sourceCheckboxes
 } from "../ui/dom.js";
 import { createStatusLine } from "../ui/statusLine.js";
-import { renderReport, sanitizeSectionOrder, applySectionVisibilityAndOrder } from "./matcher.js";
-import { loadTrackerIfNeeded, refreshTrackerStatusOptions, sanitizeTrackerStatusOptions } from "./tracker.js";
+import { renderReport, sanitizeSectionOrder, applySectionVisibilityAndOrder, buildResultFromSheetItem } from "./matcher.js";
+import { loadTrackerIfNeeded, refreshTrackerStatusOptions, sanitizeTrackerStatusOptions, findSavedJobByUrl } from "./tracker.js";
 
 export function effectiveResume() {
   return state.tab.resumeOverride || state.settings.masterResume;
@@ -77,22 +77,70 @@ async function restoreTabState() {
   if (state.tab.currentTabId == null) return;
 
   const saved = await getTabState(state.tab.currentTabId);
-  if (!saved) return;
-
-  state.matcher.lastJobText = saved.jobText || "";
-  state.matcher.lastJobUrl = saved.jobUrl || "";
-  state.matcher.lastResult = saved.result || null;
-  state.tab.resumeOverride = saved.resumeOverride || null;
-  state.tab.resumeFileName = saved.resumeFileName || "";
-  refreshResumeSourceLine();
+  if (saved) {
+    state.matcher.lastJobText = saved.jobText || "";
+    state.matcher.lastJobUrl = saved.jobUrl || "";
+    state.matcher.lastResult = saved.result || null;
+    state.matcher.savedToSheets = !!saved.savedToSheets;
+    state.tab.resumeOverride = saved.resumeOverride || null;
+    state.tab.resumeFileName = saved.resumeFileName || "";
+    refreshResumeSourceLine();
+  }
 
   if (state.matcher.lastResult) {
     renderReport(state.matcher.lastResult);
     setStatus("Restored previous analysis for this tab.", "ok");
     reanalyzeBtn.disabled = !state.matcher.lastJobText;
+  } else {
+    // No session-cached analysis for this tab — e.g. the side panel or the tab itself was closed
+    // and reopened, which gives this document a fresh tabId with nothing in session storage even
+    // though chrome.storage.session hasn't actually expired. Before making the user re-run Gemini
+    // on a job that's already saved (from this device or another), check the sheet by URL.
+    await tryLoadSavedAnalysisForCurrentTab();
   }
   refreshSaveSheetsButton();
   refreshApplyButtons();
+}
+
+async function tryLoadSavedAnalysisForCurrentTab() {
+  if (!state.settings.sheetsWebhookUrl) return;
+
+  // Block Analyze for the whole duration of this check — otherwise a click landing mid-fetch
+  // could kick off a real Gemini analysis (and re-enable it) right as this passive check was
+  // about to find and show the already-saved summary for free.
+  analyzeBtn.disabled = true;
+  setStatus("Checking Google Sheets for a saved analysis...");
+
+  try {
+    const tab = await chrome.tabs.get(state.tab.currentTabId).catch(() => null);
+    const url = tab?.url;
+    if (!url || !/^https?:\/\//.test(url)) {
+      setStatus("");
+      return;
+    }
+
+    const saved = await findSavedJobByUrl(url);
+    if (!saved) {
+      setStatus("");
+      return;
+    }
+
+    const result = buildResultFromSheetItem(saved);
+    renderReport(result);
+    state.matcher.lastResult = result;
+    state.matcher.lastJobUrl = url;
+    state.matcher.savedToSheets = true;
+    setStatus("Loaded saved summary from Google Sheets (no tokens used) — click Analyze again for the full report.", "ok");
+    await persistTabSessionState();
+  } catch (err) {
+    console.error("Could not check Sheets for an existing analysis.", err);
+    setStatus("Could not check Google Sheets for a saved analysis.", "err");
+  } finally {
+    // Re-derive the real enabled/disabled state (API key/resume present, etc.) rather than just
+    // flipping this back to enabled — refreshSetupBanner() runs right after restoreTabState()
+    // returns in init(), but set it here too in case this ever gets called from elsewhere.
+    refreshSetupBanner();
+  }
 }
 
 export async function persistTabSessionState() {
@@ -102,7 +150,8 @@ export async function persistTabSessionState() {
     jobText: state.matcher.lastJobText,
     jobUrl: state.matcher.lastJobUrl,
     resumeOverride: state.tab.resumeOverride,
-    resumeFileName: state.tab.resumeFileName
+    resumeFileName: state.tab.resumeFileName,
+    savedToSheets: state.matcher.savedToSheets
   });
 }
 
@@ -185,12 +234,20 @@ export function refreshSaveSheetsButton() {
   saveSheetsBtn.classList.remove("saved");
   if (!state.settings.sheetsWebhookUrl) {
     saveSheetsBtn.disabled = true;
+    saveSheetsBtn.textContent = "💾 Save to Google Sheets";
     saveSheetsBtn.title = "Add a Google Sheets Webhook URL in Settings first.";
   } else if (!state.matcher.lastResult) {
     saveSheetsBtn.disabled = true;
+    saveSheetsBtn.textContent = "💾 Save to Google Sheets";
     saveSheetsBtn.title = "Run an analysis first.";
+  } else if (state.matcher.savedToSheets) {
+    saveSheetsBtn.disabled = true;
+    saveSheetsBtn.classList.add("saved");
+    saveSheetsBtn.textContent = "✓ Saved to Google Sheets";
+    saveSheetsBtn.title = "Already saved to Google Sheets.";
   } else {
     saveSheetsBtn.disabled = false;
+    saveSheetsBtn.textContent = "💾 Save to Google Sheets";
     saveSheetsBtn.title = "";
   }
 }

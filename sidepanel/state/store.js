@@ -31,7 +31,11 @@ export const state = {
     lastJobText: "",
     lastJobUrl: "",
     lastCompanyGuess: "",
-    lastResult: null
+    lastResult: null,
+    // True once lastResult is known to already exist in the sheet (either just saved, or pulled
+    // from the sheet instead of re-running Gemini) — keeps the Save button disabled so the same
+    // row isn't written twice. Reset to false only when a fresh Gemini analysis produces a result.
+    savedToSheets: false
   },
   prep: {
     areas: [],

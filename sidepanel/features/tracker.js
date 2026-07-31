@@ -1,6 +1,7 @@
 import { state } from "../state/store.js";
 import { fetchFromSheets, postToSheets } from "../services/sheetsSync.js";
 import { createStatusLine } from "../ui/statusLine.js";
+import { splitCsv } from "../ui/format.js";
 import {
   trackerStatusFilter,
   trackerSortSelect,
@@ -105,13 +106,6 @@ window.addEventListener("tracker:refresh", () => {
   }
 });
 
-function splitTags(value) {
-  return String(value || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 // Stored dateTime is "YYYY-MM-DD HH:mm:ss" captured from the saver's device clock in UTC
 // (new Date().toISOString()) — reinterpreting it as UTC and letting toLocaleString() convert
 // back reproduces the original click moment in whichever device's local time is viewing it.
@@ -158,6 +152,29 @@ async function loadTrackerData({ force = false } = {}) {
 // the explicit Refresh button is the only thing that re-fetches.
 export function loadTrackerIfNeeded() {
   loadTrackerData({ force: false });
+}
+
+// Used by matcher.js/bootstrap.js to check whether a job was already analyzed and saved (from
+// this device or another one) before spending any Gemini tokens on it again. Shares the same
+// state.tracker.items cache as the Tracker tab — if that tab already loaded the list this reuses
+// it with zero extra requests, and if this runs first, the Tracker tab later reuses this fetch.
+// Deliberately skips the Tracker-tab-only UI updates (status line, refresh button) below.
+export async function findSavedJobByUrl(jobUrl) {
+  if (!jobUrl || !state.settings.sheetsWebhookUrl) return null;
+  if (!state.tracker.loaded) {
+    if (state.tracker.loading) return null; // an in-flight load will populate items shortly — don't duplicate it
+    try {
+      state.tracker.loading = true;
+      state.tracker.items = await fetchFromSheets(state.settings.sheetsWebhookUrl);
+      state.tracker.loaded = true;
+    } catch (err) {
+      console.error("Could not check Sheets for an existing analysis.", err);
+      return null;
+    } finally {
+      state.tracker.loading = false;
+    }
+  }
+  return state.tracker.items.find((it) => it.jobUrl === jobUrl) || null;
 }
 
 function sortItems(items) {
@@ -264,10 +281,10 @@ function buildCard(item) {
 
   card.append(header, meta);
 
-  appendTagRow(card, "Missing Skills", [{ tags: splitTags(item.missingSkills), pillClass: "missing", prefix: "" }]);
+  appendTagRow(card, "Missing Skills", [{ tags: splitCsv(item.missingSkills), pillClass: "missing", prefix: "" }]);
   appendTagRow(card, "Resume Optimization", [
-    { tags: splitTags(item.addSkills), pillClass: "add", prefix: "+" },
-    { tags: splitTags(item.removeSkills), pillClass: "remove", prefix: "−" }
+    { tags: splitCsv(item.addSkills), pillClass: "add", prefix: "+" },
+    { tags: splitCsv(item.removeSkills), pillClass: "remove", prefix: "−" }
   ]);
 
   return card;
