@@ -1,7 +1,7 @@
 import { state } from "../state/store.js";
 import { callGeminiWithFallback } from "../services/geminiClient.js";
 import { postToSheets } from "../services/sheetsSync.js";
-import { scanJobListOnActiveTab } from "../services/tabMessaging.js";
+import { scanJobListOnActiveTab, extractJobTextFromUrl } from "../services/tabMessaging.js";
 import { buildEditablePrompt } from "../services/promptHelpers.js";
 import { makeQBadge } from "../ui/renderHelpers.js";
 import { createStatusLine } from "../ui/statusLine.js";
@@ -19,15 +19,16 @@ Rules:
 - match_percent: whole number 0-100 reflecting realistic fit between resume and posting.
 - tech_stack: exactly 7 short tags (e.g. "React", "AWS", "Kubernetes") — the most specific, concrete technologies/skills named in the posting. If the posting text is too short to find 7 distinct technical items, fill remaining slots with the closest relevant domain/soft skills implied by the title — never leave fewer than 7.`;
 
-const BULK_MATCH_FIXED_SUFFIX = "Respond with ONLY a valid JSON object matching the schema.";
+const BULK_MATCH_FIXED_SUFFIX = `First decide is_job_posting: true only if JOB TEXT actually describes one specific open role with real responsibilities/requirements/qualifications. Set it false for anything that isn't a genuine job description — cookie/privacy notices, login/signup/account pages, talent-network or job-alert signup, generic careers/company homepage, contact pages, search/filter pages, or an apply page with no role details. If is_job_posting is false, set match_percent to 0 and tech_stack to an empty array. Respond with ONLY a valid JSON object matching the schema.`;
 
 const BULK_MATCH_SCHEMA = {
   type: "OBJECT",
   properties: {
+    is_job_posting: { type: "BOOLEAN" },
     match_percent: { type: "NUMBER" },
     tech_stack: { type: "ARRAY", items: { type: "STRING" } }
   },
-  required: ["match_percent", "tech_stack"]
+  required: ["is_job_posting", "match_percent", "tech_stack"]
 };
 
 async function runScanAndFilter() {
@@ -49,12 +50,24 @@ async function runScanAndFilter() {
     const matched = [];
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
+      setScanStatus(`Opening ${i + 1}/${jobs.length}: ${job.title}...`);
+      let jobText = job.description || "";
+      let company = job.company || "";
+      try {
+        const page = await extractJobTextFromUrl(job.url);
+        if (page.text && page.text.length > jobText.length) jobText = page.text;
+        if (page.company && !company) company = page.company;
+      } catch (err) {
+        console.warn(`Scan: couldn't open "${job.title}" — ${err.message}`);
+      }
+      job.company = company;
+
       setScanStatus(`Scoring ${i + 1}/${jobs.length}: ${job.title}...`);
       try {
-        const userPrompt = `RESUME:\n"""\n${resume}\n"""\n\nJOB TITLE: ${job.title}\nCOMPANY: ${job.company}\nJOB TEXT:\n"""\n${job.description || "(no description available)"}\n"""`;
+        const userPrompt = `RESUME:\n"""\n${resume}\n"""\n\nJOB TITLE: ${job.title}\nCOMPANY: ${company}\nJOB TEXT:\n"""\n${jobText || "(no description available)"}\n"""`;
         const data = await callGeminiWithFallback(state.settings.apiKey, buildEditablePrompt(state.settings.customInstructions.scan, DEFAULT_BULK_MATCH_PROMPT, BULK_MATCH_FIXED_SUFFIX), userPrompt, BULK_MATCH_SCHEMA);
         const matchPercent = Math.round(Number(data.match_percent) || 0);
-        if (matchPercent > 50) {
+        if (data.is_job_posting && matchPercent > 50) {
           matched.push({
             title: job.title,
             company: job.company,

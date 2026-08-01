@@ -39,6 +39,80 @@ export async function extractJobTextFromActiveTab(currentTabId) {
   });
 }
 
+// Serialized by chrome.scripting.executeScript and re-executed inside the background job
+// tab — must stay self-contained, no references outside this function body.
+function waitForStableDomInPage() {
+  return new Promise((resolve) => {
+    let settled = false;
+    let quietTimer = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      clearTimeout(quietTimer);
+      resolve(true);
+    };
+    const observer = new MutationObserver(() => {
+      clearTimeout(quietTimer);
+      quietTimer = setTimeout(finish, 700);
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    quietTimer = setTimeout(finish, 700);
+    setTimeout(finish, 6000);
+  });
+}
+
+// Opens a job posting URL in a background tab, waits for its (possibly client-rendered)
+// content to settle, then reuses content/content.js — the same extraction logic the
+// single-page matcher runs on the active tab — so scan scoring reads real job text
+// instead of just the short snippet visible on the listing page.
+export function extractJobTextFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let tabId = null;
+
+    const cleanup = () => {
+      chrome.runtime.onMessage.removeListener(listener);
+      chrome.tabs.onUpdated.removeListener(updateListener);
+      if (tabId != null) chrome.tabs.remove(tabId).catch(() => {});
+    };
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    const listener = (message, sender) => {
+      if (message?.type === "JOB_MATCH_AI_EXTRACTED_TEXT" && sender.tab?.id === tabId) {
+        settled = true;
+        cleanup();
+        resolve({ text: message.text || "", company: message.company || "", url: message.url || url });
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+
+    const updateListener = (updatedTabId, changeInfo) => {
+      if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
+      chrome.scripting
+        .executeScript({ target: { tabId }, func: waitForStableDomInPage })
+        .then(() => chrome.scripting.executeScript({ target: { tabId }, files: ["content/content.js"] }))
+        .catch((err) => fail(new Error(`Could not read this page: ${err.message}`)));
+    };
+    chrome.tabs.onUpdated.addListener(updateListener);
+
+    chrome.tabs.create({ url, active: false }, (tab) => {
+      if (!tab?.id) {
+        fail(new Error("Could not open a background tab."));
+        return;
+      }
+      tabId = tab.id;
+    });
+
+    setTimeout(() => fail(new Error("Timed out reading the page content.")), 16000);
+  });
+}
+
 export function scanJobListOnActiveTab(currentTabId) {
   return new Promise((resolve, reject) => {
     let tab;
