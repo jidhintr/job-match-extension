@@ -21,6 +21,26 @@
   const JUNK_TEXT_HINT = /^(cookie|privacy|terms|imprint|legal|faq|about( us)?|contact( us)?|home|log ?in|sign ?in|log ?out|sign ?up|register|create account|my account|newsletter|subscribe|talent network|talent community|job alert|saved jobs|job cart|search|filter|show \d+ more|load more|see more|next|previous|back to (search|results|top)|share|print|apply now)$/i;
   const JUNK_URL_HINT = /cookie|privacy|\/login|\/signin|\/signup|\/register|newsletter|subscribe|talent-?network|talent-?community|job-?alert|jobcart|mailto:|tel:|javascript:/i;
 
+  // Most career listing pages belong to a single employer, so this is a reliable fallback for
+  // any job card whose own container text didn't yield a usable company name.
+  function guessSiteCompany() {
+    const metaNames = ['meta[property="og:site_name"]', 'meta[name="application-name"]', 'meta[name="author"]'];
+    for (const sel of metaNames) {
+      const val = document.querySelector(sel)?.content?.trim();
+      if (val && val.length > 1 && val.length < 60) return val;
+    }
+
+    const titleParts = (document.title || "").split(/[|\-–—]/).map((p) => p.trim()).filter(Boolean);
+    if (titleParts.length > 1) {
+      const last = titleParts[titleParts.length - 1];
+      if (last.length > 1 && last.length < 60 && !/careers?|jobs?|vacanc/i.test(last)) return last;
+    }
+
+    const host = location.hostname.replace(/^(www|careers?|jobs?|kariera|talent|hiring|apply)\./i, "");
+    const name = host.split(".")[0];
+    return name ? name.charAt(0).toUpperCase() + name.slice(1) : "";
+  }
+
   function scanGeneric() {
     let anchors = Array.from(document.querySelectorAll("a[href]")).filter((a) => {
       const text = cleanText(a);
@@ -34,6 +54,7 @@
     const jobLike = anchors.filter((a) => JOB_URL_HINT.test(a.href));
     if (jobLike.length > 0) anchors = jobLike;
 
+    const siteCompany = guessSiteCompany();
     const seenUrls = new Set();
     const results = [];
     for (const a of anchors) {
@@ -47,7 +68,7 @@
       const containerText = cleanText(container);
       const company = containerText.replace(title, "").split(/\n|·|\|/)[0].trim().slice(0, 80);
 
-      results.push({ title, company, url, applyUrl: url, description: containerText.slice(0, 2000) });
+      results.push({ title, company, companyFallback: siteCompany, url, applyUrl: url, description: containerText.slice(0, 2000) });
     }
     return results;
   }

@@ -178,6 +178,11 @@ export async function init() {
   refreshTrackerStatusOptions();
   resumeQuickEdit.value = state.settings.masterResume;
 
+  // Scan doesn't depend on anything restoreTabState() does (that's all matcher-tab session
+  // restore, including its own possibly-slow Sheets lookup) — enable it as soon as settings are
+  // known instead of leaving it disabled until that unrelated work finishes.
+  refreshScanButton();
+
   await restoreTabState();
   refreshSetupBanner();
   refreshSaveSheetsButton();

@@ -47,7 +47,6 @@ async function runScanAndFilter() {
     }
 
     const resume = effectiveResume();
-    const matched = [];
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
       setScanStatus(`Opening ${i + 1}/${jobs.length}: ${job.title}...`);
@@ -60,6 +59,7 @@ async function runScanAndFilter() {
       } catch (err) {
         console.warn(`Scan: couldn't open "${job.title}" — ${err.message}`);
       }
+      if (!company) company = job.companyFallback || "";
       job.company = company;
 
       setScanStatus(`Scoring ${i + 1}/${jobs.length}: ${job.title}...`);
@@ -68,7 +68,7 @@ async function runScanAndFilter() {
         const data = await callGeminiWithFallback(state.settings.apiKey, buildEditablePrompt(state.settings.customInstructions.scan, DEFAULT_BULK_MATCH_PROMPT, BULK_MATCH_FIXED_SUFFIX), userPrompt, BULK_MATCH_SCHEMA);
         const matchPercent = Math.round(Number(data.match_percent) || 0);
         if (data.is_job_posting && matchPercent > 50) {
-          matched.push({
+          const result = {
             title: job.title,
             company: job.company,
             url: job.url,
@@ -76,19 +76,21 @@ async function runScanAndFilter() {
             matchPercent,
             techStack: (data.tech_stack || []).slice(0, 7),
             checked: false
-          });
+          };
+          state.scan.results.push(result);
+          appendScanResultCard(result, state.scan.results.length - 1);
+          saveScanBtn.disabled = !state.settings.sheetsWebhookUrl;
         }
       } catch (err) {
         console.warn(`Scan: skipping "${job.title}" — ${err.message}`);
       }
     }
 
-    state.scan.results = matched;
-    renderScanResults();
-    setScanStatus(matched.length
-      ? `${matched.length} of ${jobs.length} scanned jobs matched above 50%.`
+    const matchedCount = state.scan.results.length;
+    setScanStatus(matchedCount
+      ? `${matchedCount} of ${jobs.length} scanned jobs matched above 50%.`
       : `Scanned ${jobs.length} jobs — none matched above 50%.`, "ok");
-    saveScanBtn.disabled = matched.length === 0 || !state.settings.sheetsWebhookUrl;
+    saveScanBtn.disabled = matchedCount === 0 || !state.settings.sheetsWebhookUrl;
   } catch (err) {
     console.error(err);
     setScanStatus(err.message || "Couldn't scan this page.", "err");
@@ -97,52 +99,53 @@ async function runScanAndFilter() {
   }
 }
 
-function renderScanResults() {
-  scanResultsList.innerHTML = "";
-  state.scan.results.forEach((job, i) => {
-    const card = document.createElement("div");
-    card.className = "prep-area-card scan-job-card";
+function buildScanCard(job, i) {
+  const card = document.createElement("div");
+  card.className = "prep-area-card scan-job-card";
 
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = job.checked;
-    checkbox.addEventListener("change", () => {
-      state.scan.results[i].checked = checkbox.checked;
-    });
-
-    const body = document.createElement("div");
-    body.style.flex = "1";
-    body.style.minWidth = "0";
-
-    const titleRow = document.createElement("div");
-    titleRow.style.display = "flex";
-    titleRow.style.justifyContent = "space-between";
-    titleRow.style.gap = "8px";
-
-    const titleLink = document.createElement("a");
-    titleLink.className = "scan-job-title";
-    titleLink.textContent = job.title;
-    titleLink.addEventListener("click", () => window.open(job.applyUrl, "_blank"));
-
-    const matchBadge = document.createElement("span");
-    matchBadge.className = "scan-job-match";
-    matchBadge.textContent = `${job.matchPercent}%`;
-
-    titleRow.append(titleLink, matchBadge);
-
-    const companyLine = document.createElement("div");
-    companyLine.className = "scan-job-company";
-    companyLine.textContent = job.company;
-
-    const tagsRow = document.createElement("div");
-    tagsRow.className = "prep-question-badges";
-    tagsRow.style.marginTop = "6px";
-    job.techStack.forEach((tech) => tagsRow.appendChild(makeQBadge(tech, "cat")));
-
-    body.append(titleRow, companyLine, tagsRow);
-    card.append(checkbox, body);
-    scanResultsList.appendChild(card);
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = job.checked;
+  checkbox.addEventListener("change", () => {
+    state.scan.results[i].checked = checkbox.checked;
   });
+
+  const body = document.createElement("div");
+  body.style.flex = "1";
+  body.style.minWidth = "0";
+
+  const titleRow = document.createElement("div");
+  titleRow.style.display = "flex";
+  titleRow.style.justifyContent = "space-between";
+  titleRow.style.gap = "8px";
+
+  const titleLink = document.createElement("a");
+  titleLink.className = "scan-job-title";
+  titleLink.textContent = job.title;
+  titleLink.addEventListener("click", () => window.open(job.applyUrl, "_blank"));
+
+  const matchBadge = document.createElement("span");
+  matchBadge.className = "scan-job-match";
+  matchBadge.textContent = `${job.matchPercent}%`;
+
+  titleRow.append(titleLink, matchBadge);
+
+  const companyLine = document.createElement("div");
+  companyLine.className = "scan-job-company";
+  companyLine.textContent = job.company;
+
+  const tagsRow = document.createElement("div");
+  tagsRow.className = "prep-question-badges";
+  tagsRow.style.marginTop = "6px";
+  job.techStack.forEach((tech) => tagsRow.appendChild(makeQBadge(tech, "cat")));
+
+  body.append(titleRow, companyLine, tagsRow);
+  card.append(checkbox, body);
+  return card;
+}
+
+function appendScanResultCard(job, i) {
+  scanResultsList.appendChild(buildScanCard(job, i));
 }
 
 async function saveScanResultsToSheet() {
