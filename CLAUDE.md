@@ -73,6 +73,17 @@ Important project direction:
 3. Preserve the extension's current feature set while improving resilience.
 4. Keep code and documentation aligned.
 5. When adding provider/model logic, update both runtime code and project memory docs.
+6. Treat token caps as safety guards, not user-facing failures.
+
+## Token guardrail rule
+
+- Token limiting must never degrade the user experience or make the app feel unreliable.
+- Output caps are a safety guard, not a failure mode.
+- If a model hits a token limit or output barrier, automatically switch model or re-run with a smaller payload instead of surfacing a broken result.
+- Do not treat a token cap as a “bad result” signal; it is only a signal that the current prompt or model path needs a safer fallback.
+- Do not break user trust with visible "failed because of tokens" errors when a transparent fallback is available.
+- Prefer automatic model adaptation over user-facing disruption: model switch, prompt trimming, or retry with a narrower request.
+- Only escalate to an error when all fallback routes are exhausted.
 
 ## Quick decision rule
 

@@ -1,6 +1,6 @@
 import { state } from "../state/store.js";
 import { callGeminiWithFallback, isRetryableError, formatModelRetryMessage } from "../services/geminiClient.js";
-import { buildEditablePrompt } from "../services/promptHelpers.js";
+import { buildEditablePrompt, condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
 import { fmtMoney } from "../ui/format.js";
 import { checkSalaryBtn, salaryResult, salaryResultBody } from "../ui/dom.js";
 import { effectiveResume, setApplyStatus, refreshApplyButtons } from "./bootstrap.js";
@@ -40,6 +40,9 @@ const SALARY_SCHEMA = {
   required: ["location", "local_currency", "monthly_local", "annual_local", "monthly_pln", "annual_pln", "monthly_eur", "annual_eur", "benefits", "negotiation_tips", "basis_note"]
 };
 
+const SALARY_MAX_OUTPUT_TOKENS = 1500;
+const SALARY_WEB_CONTEXT_LIMIT = 1500;
+
 async function checkSalary() {
   if (!state.matcher.lastResult || !state.matcher.lastJobText) return;
   checkSalaryBtn.disabled = true;
@@ -56,16 +59,21 @@ async function checkSalary() {
           jobTitle: state.matcher.lastResult.job_title,
           areaTitle: "salary compensation range benefits"
         });
-        if (snippets.length) webContext = `\n\nLIVE WEB SEARCH SNIPPETS (salary/benefits related):\n"""\n${snippets.slice(0, 8).join("\n")}\n"""`;
+        if (snippets.length) {
+          const trimmed = condenseText(snippets.slice(0, 8).join("\n"), SALARY_WEB_CONTEXT_LIMIT);
+          webContext = `\n\nLIVE WEB SEARCH SNIPPETS (salary/benefits related):\n"""\n${trimmed}\n"""`;
+        }
       } catch {
 
       }
     }
 
-    const userPrompt = `COMPANY: ${state.matcher.lastResult.company_name || "Unknown"}\nROLE: ${state.matcher.lastResult.job_title || "Unknown"}\n\nJOB DESCRIPTION:\n"""\n${state.matcher.lastJobText}\n"""${webContext}`;
+    // Pay depends on location, seniority and stack — not on the full posting, so the brief cap is enough.
+    const job = condenseText(state.matcher.lastJobText, TEXT_LIMITS.jobBrief);
+    const userPrompt = `COMPANY: ${state.matcher.lastResult.company_name || "Unknown"}\nROLE: ${state.matcher.lastResult.job_title || "Unknown"}\n\nJOB DESCRIPTION:\n"""\n${job}\n"""${webContext}`;
     const data = await callGeminiWithFallback(state.settings.apiKey, buildEditablePrompt(state.settings.customInstructions.salary, DEFAULT_SALARY_PROMPT, SALARY_FIXED_SUFFIX), userPrompt, SALARY_SCHEMA, (m) => {
       setApplyStatus(`Busy — switching to ${m}...`);
-    });
+    }, SALARY_MAX_OUTPUT_TOKENS);
     renderSalaryResult(data);
     setApplyStatus("Salary estimate ready.", "ok");
   } catch (err) {

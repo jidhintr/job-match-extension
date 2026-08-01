@@ -2,7 +2,7 @@ import { state } from "../state/store.js";
 import { callGeminiWithFallback, isRetryableError, formatModelRetryMessage } from "../services/geminiClient.js";
 import { setPrepJobState } from "../services/storage.js";
 import { extractJobTextFromActiveTab, askInTab, ANSWER_PROVIDER_URLS } from "../services/tabMessaging.js";
-import { buildEditablePrompt } from "../services/promptHelpers.js";
+import { buildEditablePrompt, condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
 import { slugify } from "../ui/format.js";
 import { makeQBadge } from "../ui/renderHelpers.js";
 import { createStatusLine } from "../ui/statusLine.js";
@@ -59,6 +59,8 @@ const PREP_OVERVIEW_SCHEMA = {
   required: ["company_name", "job_title", "areas"]
 };
 
+const PREP_OVERVIEW_MAX_OUTPUT_TOKENS = 1200;
+
 const PREP_QUESTIONS_SYSTEM_PROMPT = `You are an expert technical interview coach with deep knowledge of real candidate-reported interview questions from Glassdoor, TeamBlind, and Prepfully.
 
 Given a JOB DESCRIPTION and one specific INTERVIEW AREA from that role's predicted interview loop, produce 6 to 10 realistic, specific interview questions a candidate would actually be asked for that area at this type of role — grounded in patterns commonly reported for similar roles, not generic textbook questions.
@@ -72,6 +74,8 @@ const PREP_QUESTIONS_SCHEMA = {
   },
   required: ["questions"]
 };
+
+const PREP_QUESTIONS_MAX_OUTPUT_TOKENS = 1200;
 
 const PREP_CONSOLIDATION_SYSTEM_PROMPT = `You are the master consolidation engine for an interview-prep tool.
 
@@ -105,6 +109,12 @@ const PREP_CONSOLIDATION_SCHEMA = {
   },
   required: ["questions"]
 };
+
+const PREP_CONSOLIDATION_MAX_OUTPUT_TOKENS = 1800;
+
+// The raw pile is duplicates and web prose, so most of it is redundant before consolidation.
+const PREP_RAW_ITEM_LIMIT = 60;
+const PREP_RAW_ITEM_CHARS = 220;
 
 const PREP_AREA_COLORS = ["#f43f5e", "#2563eb", "#7c3aed", "#d97706", "#059669", "#0e7490", "#c2410c", "#4338ca"];
 const PREP_AREA_CLASS = ["rb-rose", "rb-blue", "rb-violet", "rb-amber", "rb-emerald", "rb-teal", "rb-orange", "rb-indigo"];
@@ -351,8 +361,9 @@ function toggleAreaMaster(area, checked, questionsListEl) {
 }
 
 async function geminiScanQuestions(area) {
-  const userPrompt = `JOB DESCRIPTION:\n"""\n${state.matcher.lastJobText}\n"""\n\nINTERVIEW AREA: ${area.title} (${area.predictedRound})`;
-  const result = await callGeminiWithFallback(state.settings.apiKey, PREP_QUESTIONS_SYSTEM_PROMPT, userPrompt, PREP_QUESTIONS_SCHEMA);
+  const job = condenseText(state.matcher.lastJobText, TEXT_LIMITS.jobBrief);
+  const userPrompt = `JOB DESCRIPTION:\n"""\n${job}\n"""\n\nINTERVIEW AREA: ${area.title} (${area.predictedRound})`;
+  const result = await callGeminiWithFallback(state.settings.apiKey, PREP_QUESTIONS_SYSTEM_PROMPT, userPrompt, PREP_QUESTIONS_SCHEMA, undefined, PREP_QUESTIONS_MAX_OUTPUT_TOKENS);
   return Array.isArray(result.questions) ? result.questions.filter(Boolean) : [];
 }
 
@@ -393,7 +404,7 @@ async function fetchAreaQuestions(area, els) {
       jobTitle,
       areaTitle: area.title,
       areaRound: area.predictedRound,
-      jobDescription: state.matcher.lastJobText,
+      jobDescription: condenseText(state.matcher.lastJobText, TEXT_LIMITS.jobBrief),
       recruiterNotes: state.prep.recruiterNotes,
       keys: {
         tavily: active.tavily ? state.settings.tavilyKey : "",
@@ -422,7 +433,11 @@ async function fetchAreaQuestions(area, els) {
 
     statusEl.textContent = `Consolidating ${rawItems.length} results from ${sourcesUsed.length} source(s)...`;
 
-    const consolidationPrompt = `COMPANY: ${company || "Unknown"}\nJOB TITLE: ${jobTitle || "Unknown"}\nINTERVIEW AREA: ${area.title} (${area.predictedRound})\n\nRAW COMBINED QUESTIONS/SNIPPETS (from ${sourcesUsed.join(", ")}):\n"""\n${rawItems.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n"""`;
+    const pile = rawItems
+      .slice(0, PREP_RAW_ITEM_LIMIT)
+      .map((q, i) => `${i + 1}. ${condenseText(q, PREP_RAW_ITEM_CHARS).replace(/\n/g, " ")}`)
+      .join("\n");
+    const consolidationPrompt = `COMPANY: ${company || "Unknown"}\nJOB TITLE: ${jobTitle || "Unknown"}\nINTERVIEW AREA: ${area.title} (${area.predictedRound})\n\nRAW COMBINED QUESTIONS/SNIPPETS (from ${sourcesUsed.join(", ")}):\n"""\n${pile}\n"""`;
 
     const consolidated = await callGeminiWithFallback(
       state.settings.apiKey,
@@ -431,7 +446,8 @@ async function fetchAreaQuestions(area, els) {
       PREP_CONSOLIDATION_SCHEMA,
       (model) => {
         statusEl.textContent = `Consolidating — switching to ${model}...`;
-      }
+      },
+      PREP_CONSOLIDATION_MAX_OUTPUT_TOKENS
     );
 
     const finalQuestions = Array.isArray(consolidated.questions) ? consolidated.questions : [];
@@ -595,15 +611,17 @@ async function runGeneratePrep({ forceRegenerate } = {}) {
 
     setPrepStatus("Predicting interview focus areas...");
     const notesSection = recruiterNotes
-      ? `RECRUITER INSIGHTS:\n"""\n${recruiterNotes}\n"""\n\n`
+      ? `RECRUITER INSIGHTS:\n"""\n${condenseText(recruiterNotes, TEXT_LIMITS.notes)}\n"""\n\n`
       : "";
-    const userPrompt = `JOB DESCRIPTION:\n"""\n${state.matcher.lastJobText}\n"""\n\n${notesSection}`;
+    const job = condenseText(state.matcher.lastJobText, TEXT_LIMITS.job);
+    const userPrompt = `JOB DESCRIPTION:\n"""\n${job}\n"""\n\n${notesSection}`;
     const result = await callGeminiWithFallback(
       state.settings.apiKey,
       buildEditablePrompt(state.settings.customInstructions.prep, DEFAULT_PREP_OVERVIEW_PROMPT, PREP_OVERVIEW_FIXED_SUFFIX),
       userPrompt,
       PREP_OVERVIEW_SCHEMA,
-      (model) => setPrepStatus(`Busy — switching to ${model} and retrying...`)
+      (model) => setPrepStatus(`Busy — switching to ${model} and retrying...`),
+      PREP_OVERVIEW_MAX_OUTPUT_TOKENS
     );
 
     state.prep.jobUrl = state.matcher.lastJobUrl;

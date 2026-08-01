@@ -29,6 +29,10 @@ It includes:
 - Storage/settings logic belongs in `sidepanel/services/storage.js` and `sidepanel/state/store.js`.
 - Do not hardcode Gemini as the only option for core features.
 - When changing price/cost-sensitive prompts, update the docs and project memory.
+- Token limits are guardrails, not user-facing failures.
+- If a model hits a token cap or output barrier, automatically switch providers/models or shrink the payload before surfacing a failure.
+- Do not break trust or UX with visible token-limit errors when a transparent fallback is available.
+- Keep comments minimal and only add them when the logic is genuinely non-obvious.
 
 ## High-priority follow-up work
 

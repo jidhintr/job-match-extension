@@ -26,7 +26,7 @@ export function formatModelRetryMessage(err, contextLabel = "Gemini") {
   return `All ${contextLabel} models are busy, timed out, or over quota right now. The last attempted ${contextLabel} model was ${attemptedModel}. ${lastFailure}`;
 }
 
-async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema) {
+async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema, maxOutputTokens) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GEMINI_CALL_TIMEOUT_MS);
 
@@ -42,7 +42,8 @@ async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema) 
         generationConfig: {
           temperature: 0.4,
           responseMimeType: "application/json",
-          responseSchema: schema
+          responseSchema: schema,
+          ...(maxOutputTokens ? { maxOutputTokens } : {})
         }
       })
     });
@@ -72,7 +73,18 @@ async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema) 
     throw err;
   }
 
-  const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+  const candidate = data?.candidates?.[0];
+
+  // Hitting the output cap truncates the JSON mid-object, so it can never be parsed. Flagged so the
+  // caller can retry this same model uncapped — see callGeminiWithFallback.
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    const capErr = new Error("Gemini hit the output token cap.");
+    capErr.isOutputCap = true;
+    capErr.model = model;
+    throw capErr;
+  }
+
+  const rawText = candidate?.content?.parts?.map((p) => p.text || "").join("") || "";
   if (!rawText) {
     const blockReason = data?.promptFeedback?.blockReason;
     if (blockReason) {
@@ -96,23 +108,39 @@ async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema) 
   }
 }
 
-export async function callGeminiWithFallback(apiKey, systemPrompt, userPrompt, schema, onModelSwitch) {
+export async function callGeminiWithFallback(apiKey, systemPrompt, userPrompt, schema, onModelSwitch, maxOutputTokens) {
   let lastErr;
   for (let i = 0; i < GEMINI_MODELS.length; i++) {
     const model = GEMINI_MODELS[i];
     if (i > 0) onModelSwitch?.(model);
+
+    let err;
     try {
-      return await callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema);
-    } catch (err) {
-      lastErr = err;
-      lastErr.model = model;
-      const isLastModel = i === GEMINI_MODELS.length - 1;
-      if (isRetryableError(err) && !isLastModel) {
-        console.warn(`Gemini ${model} failed (${err.message}) — falling back to ${GEMINI_MODELS[i + 1]}.`);
-        continue;
-      }
-      throw err;
+      return await callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema, maxOutputTokens);
+    } catch (firstErr) {
+      err = firstErr;
     }
+
+    // The cap is a cost guard, not a product limit. If a response genuinely needs more room (thinking
+    // tokens count against it on the flash models), retry this same model uncapped rather than hand
+    // the user a failure or a shorter report than they'd have got before.
+    if (err.isOutputCap && maxOutputTokens) {
+      console.warn(`Gemini ${model} hit the ${maxOutputTokens}-token output cap — retrying uncapped.`);
+      try {
+        return await callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema);
+      } catch (retryErr) {
+        err = retryErr;
+      }
+    }
+
+    lastErr = err;
+    lastErr.model = model;
+    const isLastModel = i === GEMINI_MODELS.length - 1;
+    if (isRetryableError(err) && !isLastModel) {
+      console.warn(`Gemini ${model} failed (${err.message}) — falling back to ${GEMINI_MODELS[i + 1]}.`);
+      continue;
+    }
+    throw err;
   }
   throw lastErr;
 }

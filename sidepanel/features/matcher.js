@@ -1,6 +1,7 @@
 import { state } from "../state/store.js";
 import { callGeminiWithFallback, isRetryableError, formatModelRetryMessage } from "../services/geminiClient.js";
 import { postToSheets } from "../services/sheetsSync.js";
+import { condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
 import { extractJobTextFromActiveTab } from "../services/tabMessaging.js";
 import { fillList, fillPills, fillTechGapTable } from "../ui/renderHelpers.js";
 import { clampScore, splitCsv } from "../ui/format.js";
@@ -38,6 +39,7 @@ export const RESUME_SECTIONS = [
     label: "Missing Skills",
     blockId: "missingSkillsBlock",
     promptStep: "Identify skills/keywords present in the job description but missing or weak in the resume (missing_skills).",
+    maxTokens: 400,
     schema: { missing_skills: { type: "ARRAY", items: { type: "STRING" } } }
   },
   {
@@ -45,6 +47,7 @@ export const RESUME_SECTIONS = [
     label: "Resume Optimization",
     blockId: "resumeOptimizationBlock",
     promptStep: "Resume Optimization: concrete skills/keywords to add, and outdated/irrelevant skills to consider removing.",
+    maxTokens: 700,
     schema: {
       resume_optimization: {
         type: "OBJECT",
@@ -61,6 +64,7 @@ export const RESUME_SECTIONS = [
     label: "Stage 1 — Attention Test",
     blockId: "stage1Block",
     promptStep: "Stage 1 — Attention Test: imagine a recruiter scanning the resume for 6 seconds. What immediately stands out as impressive/relevant, and what is forgettable/generic?",
+    maxTokens: 800,
     schema: {
       stage_1_attention_test: {
         type: "OBJECT",
@@ -77,6 +81,7 @@ export const RESUME_SECTIONS = [
     label: "Stage 2 — Mindset Breakdown",
     blockId: "stage2Block",
     promptStep: "Stage 2 — Mindset Breakdown: identify weak areas in how the resume is framed for this role, and any credibility gaps (unverifiable or vague claims).",
+    maxTokens: 800,
     schema: {
       stage_2_mindset_breakdown: {
         type: "OBJECT",
@@ -92,7 +97,8 @@ export const RESUME_SECTIONS = [
     id: "stage_3_tech_gap_table",
     label: "Stage 3 — Tech Gap Table",
     blockId: "stage3Block",
-    promptStep: "Stage 3 — Technical Gap Table: list specific technologies/requirements from the job description, the context in which they're required, and how severe the gap is in the resume (High, Med, or Low).",
+    promptStep: "Stage 3 — Technical Gap Table: list up to 8 specific technologies/requirements from the job description, the context in which they're required, and how severe the gap is in the resume (High, Med, or Low).",
+    maxTokens: 800,
     schema: {
       stage_3_tech_gap_table: {
         type: "ARRAY",
@@ -113,6 +119,7 @@ export const RESUME_SECTIONS = [
     label: "Why You're a Good Fit",
     blockId: "goodFitBlock",
     promptStep: "List exactly 10 concise, specific bullet points explaining why this candidate IS a good fit for the role (why_good_fit), ordered strongest-first since only the top 5 are shown by default. Always return exactly 10 items, even if you must include reasonably inferred strengths.",
+    maxTokens: 700,
     schema: { why_good_fit: { type: "ARRAY", items: { type: "STRING" } } }
   },
   {
@@ -120,6 +127,7 @@ export const RESUME_SECTIONS = [
     label: "Interview & Role Prep",
     blockId: "rolePrepBlock",
     promptStep: 'Role Prep: problem_solved (short bullets on the underlying business problem this role exists to solve), expectations (short bullets on what success in the first 3-6 months looks like / what the hiring manager expects), focus_areas (short bullets on what the candidate should personally brush up on before interviewing, based on their specific resume gaps against this posting), interview_keywords (5-12 specific technical/domain terms and phrases from the job description the candidate should naturally work into interview answers).',
+    maxTokens: 900,
     schema: {
       role_prep: {
         type: "OBJECT",
@@ -138,6 +146,7 @@ export const RESUME_SECTIONS = [
     label: "Company Insights",
     blockId: "companyInsightsBlock",
     promptStep: 'Company Insights: using your general knowledge of the company named in or inferable from the job description, summarize: core_business (what the company actually does, as short bullet points), employee_count (a rough headcount range, or "Not publicly known" if you cannot recall one), years_in_market (founding year and approximate age, or "Not publicly known"), interview_process (typical interview stages reported by candidates, e.g. on Glassdoor, as short bullet points, or a single item stating this isn\'t reliably known), work_environment (short bullet points on culture/pace/remote policy if known), glassdoor_rating (an approximate rating out of 5 if you recall one, or "Not publicly known"), and confidence_note (one honest sentence stating whether this is well-known public information, a rough estimate, or largely unknown — and recommending the candidate verify current figures directly on Glassdoor/LinkedIn before relying on them). Never invent precise statistics you are not reasonably confident about — prefer honest ranges or "Not publicly known" over fabricated precision.',
+    maxTokens: 1000,
     schema: {
       company_insights: {
         type: "OBJECT",
@@ -169,6 +178,12 @@ export const DEFAULT_SECTION_ORDER = RESUME_SECTIONS.map((s) => ({ id: s.id, ena
 // The sections a sheet-reconstructed summary has no data for — see renderReport()'s
 // isPartialFromSheet check.
 const DEEP_ANALYSIS_BLOCK_IDS = ["stage1Block", "stage2Block", "stage3Block", "goodFitBlock", "rolePrepBlock", "companyInsightsBlock"];
+
+// Covers the identity fields, both scores, the warnings object and the model's thinking tokens.
+// Each enabled section adds its own maxTokens on top, so the budget shrinks automatically when
+// sections are disabled in Settings. These are deliberately generous — the cap exists to bound
+// runaway cost, and callGeminiWithFallback retries uncapped if a response ever needs more room.
+const BASE_OUTPUT_TOKENS = 600;
 
 function buildAnalysisPromptAndSchema(sectionOrder) {
   const enabledIds = (sectionOrder || DEFAULT_SECTION_ORDER).filter((s) => s.enabled).map((s) => s.id);
@@ -203,8 +218,8 @@ Respond with ONLY a single valid JSON object matching the required response sche
   const properties = {
     company_name: { type: "STRING" },
     job_title: { type: "STRING" },
-    ats_score: { type: "NUMBER", description: "Whole number percentage from 0 to 100. Never a 0-1 fraction." },
-    chance_of_getting_job: { type: "NUMBER", description: "Whole number percentage from 0 to 100. Never a 0-1 fraction." },
+    ats_score: { type: "NUMBER" },
+    chance_of_getting_job: { type: "NUMBER" },
     warnings: {
       type: "OBJECT",
       properties: {
@@ -221,7 +236,9 @@ Respond with ONLY a single valid JSON object matching the required response sche
     required.push(...Object.keys(s.schema));
   });
 
-  return { systemPrompt, schema: { type: "OBJECT", properties, required } };
+  const maxOutputTokens = enabledSections.reduce((sum, s) => sum + s.maxTokens, BASE_OUTPUT_TOKENS);
+
+  return { systemPrompt, schema: { type: "OBJECT", properties, required }, maxOutputTokens };
 }
 
 export function sanitizeSectionOrder(saved) {
@@ -252,9 +269,11 @@ function setBusy(isBusy, label) {
 }
 
 async function analyzeWithGemini(jobText, onModelSwitch) {
-  const userPrompt = `MASTER RESUME:\n"""\n${effectiveResume()}\n"""\n\nJOB DESCRIPTION:\n"""\n${jobText}\n"""`;
-  const { systemPrompt, schema } = buildAnalysisPromptAndSchema(state.settings.resumeSectionOrder);
-  return callGeminiWithFallback(state.settings.apiKey, systemPrompt, userPrompt, schema, onModelSwitch);
+  const resume = condenseText(effectiveResume(), TEXT_LIMITS.resume);
+  const job = condenseText(jobText, TEXT_LIMITS.job);
+  const userPrompt = `MASTER RESUME:\n"""\n${resume}\n"""\n\nJOB DESCRIPTION:\n"""\n${job}\n"""`;
+  const { systemPrompt, schema, maxOutputTokens } = buildAnalysisPromptAndSchema(state.settings.resumeSectionOrder);
+  return callGeminiWithFallback(state.settings.apiKey, systemPrompt, userPrompt, schema, onModelSwitch, maxOutputTokens);
 }
 
 for (const gauge of [atsGauge, chanceGauge]) {

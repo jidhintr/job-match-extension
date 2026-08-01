@@ -1,6 +1,6 @@
 import { state } from "../state/store.js";
 import { callGeminiWithFallback, isRetryableError, formatModelRetryMessage } from "../services/geminiClient.js";
-import { buildEditablePrompt } from "../services/promptHelpers.js";
+import { buildEditablePrompt, condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
 import { coverLetterBtn } from "../ui/dom.js";
 import { effectiveResume, setApplyStatus, refreshApplyButtons } from "./bootstrap.js";
 
@@ -32,15 +32,20 @@ const COVER_LETTER_SCHEMA = {
   required: ["candidate_name", "opening_paragraph", "key_points", "closing_paragraph"]
 };
 
+// A one-page letter is ~250-350 words, so this leaves headroom without paying for an essay.
+const COVER_LETTER_MAX_OUTPUT_TOKENS = 1500;
+
 async function generateCoverLetter() {
   if (!state.matcher.lastResult || !state.matcher.lastJobText) return;
   coverLetterBtn.disabled = true;
   setApplyStatus("Writing your cover letter...");
   try {
-    const userPrompt = `MASTER RESUME:\n"""\n${effectiveResume()}\n"""\n\nJOB DESCRIPTION:\n"""\n${state.matcher.lastJobText}\n"""\n\nCOMPANY: ${state.matcher.lastResult.company_name || ""}\nROLE: ${state.matcher.lastResult.job_title || ""}`;
+    const resume = condenseText(effectiveResume(), TEXT_LIMITS.resume);
+    const job = condenseText(state.matcher.lastJobText, TEXT_LIMITS.job);
+    const userPrompt = `MASTER RESUME:\n"""\n${resume}\n"""\n\nJOB DESCRIPTION:\n"""\n${job}\n"""\n\nCOMPANY: ${state.matcher.lastResult.company_name || ""}\nROLE: ${state.matcher.lastResult.job_title || ""}`;
     const data = await callGeminiWithFallback(state.settings.apiKey, buildEditablePrompt(state.settings.customInstructions.coverLetter, DEFAULT_COVER_LETTER_PROMPT, COVER_LETTER_FIXED_SUFFIX), userPrompt, COVER_LETTER_SCHEMA, (m) => {
       setApplyStatus(`Busy — switching to ${m}...`);
-    });
+    }, COVER_LETTER_MAX_OUTPUT_TOKENS);
     buildCoverLetterPdf(data);
     setApplyStatus("Cover letter downloaded.", "ok");
   } catch (err) {

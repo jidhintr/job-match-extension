@@ -265,13 +265,24 @@ This makes Gemini a central dependency for the main workflow, even though the ap
 
 ## Improvements to make
 
-### 1. Token efficiency improvements
+### 1. Token efficiency improvements — done
 
-- Add per-feature output caps such as maxOutputTokens and shorter output schema payloads where possible.
-- Reduce prompt size before every Gemini call: trim long job descriptions, collapse repeated context, and avoid sending unnecessary schema-heavy text for low-value sections.
-- Disable or skip expensive sections early when the user has not enabled them in Settings.
-- Make the Resume Matcher use a smaller, better-targeted prompt for each enabled block rather than a single large monolithic request.
-- Consider sending only the most relevant excerpts from the job description instead of the entire raw posting.
+The guiding rule for this pass: **cut waste, never cut the answer.** Every limit is a guard against
+runaway cost on junk input, not a squeeze on output quality.
+
+Implemented:
+
+- `condenseText()` in `services/promptHelpers.js` runs on every resume, job description, recruiter note and web snippet before it enters a prompt. It strips page chrome (nav links, cookie/privacy/apply-now buttons, footers), collapses whitespace and drops duplicate lines. This is the bulk of the saving and it costs nothing in quality: the boilerplate filter only applies to lines of 60 characters or less, so prose that legitimately mentions those words ("users sign in via SSO", "privacy policy tooling experience") is never stripped. A realistic posting shrinks by roughly half.
+- Character budgets live in one place (`TEXT_LIMITS`), set well above what a real posting needs — `content.js` already caps extraction at 15000 chars, and condensing usually lands a posting far below the 12000-char limit, so truncation should effectively only hit junk-heavy pages. High-frequency paths use the `brief` limits (5000), since bulk scan re-sends the resume once per job on the page.
+- `callGeminiWithFallback` takes a `maxOutputTokens` cap and every feature passes its own budget: bulk scan 600, prep overview/questions 1200, prep consolidation 1800, cover letter 1500, salary 1500. These sit well above the visible output size because thinking tokens count against the cap on the flash models.
+- The Resume Matcher budget is computed, not fixed: each entry in `RESUME_SECTIONS` declares its own `maxTokens` and the cap is the sum of the enabled sections plus a base. Disabling sections in Settings lowers the cap automatically.
+- Safety valve: if a response ever does hit the cap (`finishReason: "MAX_TOKENS"`), the same model is retried once with no cap. So a cap that turns out too tight costs one extra request, never a failed or shortened report. It also no longer burns the whole model fallback chain on the same cap.
+- Prep consolidation caps the raw pile at 60 items × 220 chars, so a noisy multi-source scan can't produce an unbounded prompt.
+- Duplicated instructions were removed from the matcher schema (the `ats_score` / `chance_of_getting_job` descriptions repeated what the system prompt already says).
+
+Deliberately not done:
+
+- Splitting the Resume Matcher into one request per enabled block. It would raise total token use, not lower it — the resume and job description (the bulk of the input) would be re-sent with every block, and input tokens dominate this call. The per-section output budget gives the cost control that item was after, at one request.
 
 ### 2. Fragile logic and reliability issues
 

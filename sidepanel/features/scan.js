@@ -2,7 +2,7 @@ import { state } from "../state/store.js";
 import { callGeminiWithFallback } from "../services/geminiClient.js";
 import { postToSheets } from "../services/sheetsSync.js";
 import { scanJobListOnActiveTab, extractJobTextFromUrl } from "../services/tabMessaging.js";
-import { buildEditablePrompt } from "../services/promptHelpers.js";
+import { buildEditablePrompt, condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
 import { makeQBadge } from "../ui/renderHelpers.js";
 import { createStatusLine } from "../ui/statusLine.js";
 import { scanAndFilterBtn, saveScanBtn, scanStatusLine, scanResultsList } from "../ui/dom.js";
@@ -31,6 +31,10 @@ const BULK_MATCH_SCHEMA = {
   required: ["is_job_posting", "match_percent", "tech_stack"]
 };
 
+// The response itself is tiny (a flag, a number, 7 tags) but thinking tokens count against this cap
+// on the flash models, so it stays well above the visible output size.
+const BULK_MATCH_MAX_OUTPUT_TOKENS = 600;
+
 async function runScanAndFilter() {
   if (!state.settings.apiKey || !effectiveResume()) return;
   scanAndFilterBtn.disabled = true;
@@ -46,7 +50,8 @@ async function runScanAndFilter() {
       return;
     }
 
-    const resume = effectiveResume();
+    // Condensed once, reused for every job — this text is re-sent on each request in the loop.
+    const resume = condenseText(effectiveResume(), TEXT_LIMITS.resumeBrief);
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
       setScanStatus(`Opening ${i + 1}/${jobs.length}: ${job.title}...`);
@@ -64,8 +69,9 @@ async function runScanAndFilter() {
 
       setScanStatus(`Scoring ${i + 1}/${jobs.length}: ${job.title}...`);
       try {
-        const userPrompt = `RESUME:\n"""\n${resume}\n"""\n\nJOB TITLE: ${job.title}\nCOMPANY: ${company}\nJOB TEXT:\n"""\n${jobText || "(no description available)"}\n"""`;
-        const data = await callGeminiWithFallback(state.settings.apiKey, buildEditablePrompt(state.settings.customInstructions.scan, DEFAULT_BULK_MATCH_PROMPT, BULK_MATCH_FIXED_SUFFIX), userPrompt, BULK_MATCH_SCHEMA);
+        const jobBrief = condenseText(jobText, TEXT_LIMITS.jobBrief) || "(no description available)";
+        const userPrompt = `RESUME:\n"""\n${resume}\n"""\n\nJOB TITLE: ${job.title}\nCOMPANY: ${company}\nJOB TEXT:\n"""\n${jobBrief}\n"""`;
+        const data = await callGeminiWithFallback(state.settings.apiKey, buildEditablePrompt(state.settings.customInstructions.scan, DEFAULT_BULK_MATCH_PROMPT, BULK_MATCH_FIXED_SUFFIX), userPrompt, BULK_MATCH_SCHEMA, undefined, BULK_MATCH_MAX_OUTPUT_TOKENS);
         const matchPercent = Math.round(Number(data.match_percent) || 0);
         if (data.is_job_posting && matchPercent > 50) {
           const result = {

@@ -47,6 +47,17 @@ The preferred end state is:
 - Prefer structured prompts but keep them short and targeted.
 - Track provider/model failures and user-visible messaging clearly.
 
+## Change log
+
+### Token efficiency pass (README improvement 1)
+
+- Added `condenseText()` and `TEXT_LIMITS` to `sidepanel/services/promptHelpers.js`. Every prompt input (resume, job text, recruiter notes, Tavily snippets, prep raw pile) goes through it. Use it for any new provider call too — do not paste raw extracted page text into a prompt.
+- `callGeminiWithFallback(apiKey, systemPrompt, userPrompt, schema, onModelSwitch, maxOutputTokens)` — last argument is the output cap. Pass a cap for every new call site.
+- Matcher output cap is derived from the enabled `RESUME_SECTIONS` entries' `maxTokens` plus `BASE_OUTPUT_TOKENS`. When adding a section, give it a `maxTokens` value.
+- `finishReason: "MAX_TOKENS"` triggers one uncapped retry on the same model. Keep this behaviour: it is what makes the caps safe to tune, since a too-tight cap can only ever cost an extra request, not a degraded result. Note that thinking tokens count against `maxOutputTokens` on the flash models, so caps must stay well above the visible output size.
+- The boilerplate filter in `condenseText()` only applies to lines of 60 chars or less, so real prose that mentions "sign in", "privacy policy" etc. survives. Do not widen it to match anywhere in a line.
+- Rejected: one Gemini request per matcher block. Input tokens dominate that call, so re-sending the resume and posting per block costs more than the single combined request.
+
 ## Future work checklist
 
 - tune model routing logic for each task type
