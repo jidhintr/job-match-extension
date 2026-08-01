@@ -1,287 +1,307 @@
 # MatchResumer — Chrome Extension
 
-MatchResumer is a Manifest V3 Chrome/Edge extension that helps you:
+MatchResumer is a Manifest V3 Chrome/Edge extension for job search workflow automation. It helps you:
 
-- analyze a job posting against your saved resume
-- run an Interview Prep workflow on the same job description
-- save the resume-match result and interview-prep progress to Google Sheets
+- match a live job posting against your master resume
+- generate and improve interview prep question sets for the same job
+- bulk-scan a jobs page for likely matches
+- create a cover letter and salary estimate from a matched role
+- save job and prep data back to Google Sheets and manage tracked applicants
 
-## What the extension actually does
+## Extension overview
+
+The extension is organized as a side-panel app with multiple tabs and settings pages. It stores local settings in Chrome storage, keeps per-tab matcher state isolated, and syncs a subset of data to Google Sheets when configured.
+
+## Installation and setup
+
+### Install
+
+1. Open chrome://extensions
+2. Enable Developer mode
+3. Click Load unpacked and select this project folder
+4. Pin the extension if desired so the side panel is easier to access
+
+### One-time configuration
+
+From the extension options page:
+
+1. Save a Google Gemini API key
+2. Optionally add keys for Tavily, DeepSeek, OpenAI, and/or Perplexity for Interview Prep enrichment
+3. Add or edit your master resume text
+4. Optionally paste a Google Sheets webhook URL for syncing
+5. Configure visible tabs, custom instructions, and tracker status labels as needed
+
+The app stores settings locally in Chrome storage and keeps the resume matcher state per tab.
+
+---
+
+## Tab-by-tab functionality
 
 ### 1. Resume Matcher tab
 
-From the side panel, you can:
+Purpose: evaluate a job description against the candidate's resume and produce a role-specific summary.
 
-- open a job page and extract the job description text automatically
-- analyze the page against a stored master resume
-- re-run the analysis without scraping the page again if the resume content changes
-- upload a per-tab resume override from a PDF or DOCX file for a single job tab
-- save the condensed job-match result to Google Sheets
+Current behaviors:
 
-The output includes:
+- extracts or reuses the active tab's job text automatically
+- checks whether an analysis for the same URL already exists in Google Sheets before re-running Gemini
+- allows a per-tab resume override from a PDF or DOCX file
+- supports re-analysis without re-scraping if the current tab already has the job text
+- supports toggling and reordering report sections from Settings
+- renders a rich summary with score, role/company info, warnings, missing skills, optimization tips, interview prep guidance, and company context
 
-- company name and role title
-- ATS score
-- interview chance
-- missing skills
-- resume optimization suggestions
-- role prep guidance
-- company insights
+Typical output fields include:
+
+- company_name
+- job_title
+- ats_score
+- chance_of_getting_job
+- warnings (language barrier / visa sponsorship concerns)
+- missing_skills
+- resume_optimization
+- stage_1_attention_test
+- stage_2_mindset_breakdown
+- stage_3_tech_gap_table
+- why_good_fit
+- role_prep
+- company_insights
+
+Important logic notes:
+
+- report blocks are individually enabled/disabled via Settings so unused sections are not requested from Gemini at all
+- saved results are cached per tab in session state and can be restored quickly
+- if a Google Sheets summary exists for the same URL, the app can load it instead of spending tokens again
 
 ### 2. Interview Prep tab
 
-The Interview Prep tab is independent of the resume matcher and works from the job description alone.
+Purpose: generate realistic interview prep content for a job and track the candidate's progress through each area.
 
-It can:
+Current behaviors:
 
-- generate focus areas for the role using Gemini
-- let you paste recruiter insights / round notes
-- fetch deeper question suggestions for each area
-- consolidate the results with Gemini
-- track completion state per area and question
-- save the full progress snapshot to Google Sheets
+- identifies interview focus areas for the current role using Gemini
+- lets the user add recruiter notes or round-specific notes
+- fetches more candidate-reported question ideas per area from multiple sources
+- consolidates noisy results from multiple sources into a final list
+- assigns category, difficulty, and frequency to each final question
+- tracks per-area completion and progress
+- saves the full interview-prep snapshot to Google Sheets
 
-## Installation
-
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked** and select this project folder.
-4. Pin the extension if you want the side panel to stay easy to reach.
-
-## One-time setup
-
-In the extension options page:
-
-1. Save your Google Gemini API key.
-2. Optionally add provider keys for the Interview Prep scan sources.
-3. Save your master resume text.
-4. Optionally add a Google Sheets webhook URL.
-
-The extension stores the settings locally in `chrome.storage.local`.
-
-## Optional provider sources for Interview Prep
-
-The deep-dive question scan is a two-step flow:
-
-1. A parallel scan runs across every configured source for the selected interview area.
-2. Gemini consolidates the combined raw results, dedupes them, and labels each final question with category / difficulty / frequency.
-
-Configured sources in the current codebase include:
+Current supported sources in code:
 
 - Gemini
-- Tavily
+- Tavily web search
 - DeepSeek
 - OpenAI
 - Perplexity
 
-Gemini is always part of the flow and acts as the consolidation engine. The others are optional extra sources.
+Flow pattern:
+
+1. Gemini predicts the highest-value interview focus areas for the role
+2. A parallel scan fetches question candidates from configured sources
+3. Gemini consolidates and deduplicates the raw pile
+4. The UI renders questions with completion toggles, category badges, and progress tracking
+
+### 3. Scan Jobs tab
+
+Purpose: scan an entire jobs listing page and identify likely matches using a resume-vs-job filter.
+
+Current behaviors:
+
+- reads jobs from the current page
+- opens the job details URL when needed to extract fuller description text
+- scores each job against the resume
+- keeps only jobs with a realistic match above a threshold
+- renders a selectable list of likely matches
+- allows saving selected jobs into the tracker sheet
+
+The bulk scan uses Gemini with a custom schema that checks whether a page is a real job posting and returns:
+
+- is_job_posting
+- match_percent
+- tech_stack
+
+This is designed to avoid false positives from company pages, login pages, or generic career pages.
+
+### 4. Cover Letter tab
+
+Purpose: generate a tailored cover letter from the matched job result and the effective resume.
+
+Current behaviors:
+
+- builds a prompt using the job description and resume
+- asks Gemini for a structured JSON response with:
+  - candidate_name
+  - opening_paragraph
+  - key_points
+  - closing_paragraph
+- converts the result into a downloadable PDF letter
+- handles retry and quota messaging if Gemini fails
+
+### 5. Salary tab
+
+Purpose: estimate a salary range for the selected job and company.
+
+Current behaviors:
+
+- reads the current matched job and job description
+- optionally adds live web snippets from Tavily before asking Gemini
+- asks Gemini for a structured compensation object containing:
+  - location
+  - local_currency
+  - monthly_local / annual_local
+  - monthly_pln / annual_pln
+  - monthly_eur / annual_eur
+  - benefits
+  - negotiation_tips
+  - basis_note
+- renders the result in the side panel as salary estimates and context
+
+### 6. Tracker tab
+
+Purpose: track applications and statuses across jobs saved to Google Sheets.
+
+Current behaviors:
+
+- fetches tracked job rows from the Sheets webhook
+- supports status filtering and sorting
+- supports custom status labels configured in Settings
+- lets users update status values via dropdown on each card
+- color-codes statuses based on configuration
+- reuses the same tracker data for duplicate checks when deciding whether a job has already been analyzed
+
+### 7. Settings page
+
+Purpose: configuration and operational control.
+
+Current settings include:
+
+- Gemini API key
+- Tavily, DeepSeek, OpenAI, Perplexity keys and model overrides
+- Google Sheets webhook URL
+- visible tab preferences
+- tracker status labels
+- resume matcher report section enablement and ordering
+- custom instructions for each feature (matcher, prep, cover letter, salary, bulk scan)
+
+Special note:
+
+- Gemini is treated as a required provider in the current configuration, even though the app has other provider integrations already available.
+- The Interview Prep source picker allows selecting which external sources are used for that workflow.
+
+---
 
 ## Google Sheets integration
 
-If you configure a webhook URL, the extension sends two payload types to Apps Script:
+The app supports Google Apps Script webhook syncing for both analysis and tracking flows.
 
-- `job_match` for the resume-match summary row
-- `interview_prep` for the full per-company interview-prep snapshot
+### What it syncs
 
-The included Apps Script file in this repo is meant to be pasted into Google Apps Script and deployed as a Web App.
+- job_match rows for resume analysis snapshots
+- interview_prep snapshots for each company/role
+- tracker rows for application status tracking
+- status updates for existing tracked records
 
-The webhook sync is designed to:
+### Apps Script behavior
 
-- create the required sheet/tab if it does not exist
-- append one row for resume-match logging
-- fully replace the interview-prep company tab contents on each save, instead of duplicating rows
+The included script is meant to be pasted into Google Apps Script and deployed as a Web App.
+
+The current script logic is designed to:
+
+- create required sheets/tabs if they do not exist
+- append one row per job match summary
+- replace the interview-prep company data instead of duplicating rows
+- support lookup by job URL so existing rows can be identified and reused
+
+---
+
+## Current provider and model behavior
+
+### Gemini fallback order in code
+
+The current fallback order is:
+
+1. gemini-3.1-flash-lite
+2. gemini-2.5-flash
+3. gemini-2.5-flash-lite
+4. gemini-3.5-flash
+
+If a request times out, returns a busy/quota error, returns a 4xx/5xx response, or reports that a model is unavailable, the next model is attempted.
+
+The retry logic is implemented in the shared Gemini client and is reused by:
+
+- Resume Matcher
+- Interview Prep
+- Cover Letter
+- Salary
+- Scan Jobs
+
+This makes Gemini a central dependency for the main workflow, even though the app already contains separate provider integrations for the interview-prep scan flow.
+
+---
 
 ## Current code structure
 
-- `manifest.json` — MV3 extension manifest
-- `background.js` — background service worker for the extension
-- `options.html` / `options.js` — settings page
-- `sidepanel/sidepanel.html` / `sidepanel/sidepanel.js` / `sidepanel/sidepanel.css` — sidepanel.js is now a thin ES-module entry point that wires up the modules below
-- `sidepanel/state/store.js` — central app state (settings, tab, matcher, prep, scan)
-- `sidepanel/services/` — storage, Gemini client, non-Gemini providers (`aiProviders.js`), resume parsing, Sheets sync, tab/content-script messaging, prompt helpers
-- `sidepanel/ui/` — DOM element cache, status-line factory, generic render helpers, formatting helpers
-- `sidepanel/features/` — one controller per feature: `bootstrap.js` (settings/tabs/resume), `matcher.js`, `prep.js`, `coverLetter.js`, `salary.js`, `scan.js`
-- `content/content.js` — page-text extraction helper
-- `lib/pdfjs/` — bundled PDF.js runtime
-- `google-apps-script.js` — Google Apps Script webhook handler
+- manifest.json — MV3 extension manifest
+- background.js — extension background service worker
+- options.html / options.js — settings UI
+- sidepanel/sidepanel.html / sidepanel/sidepanel.js / sidepanel/sidepanel.css — main panel shell and tab behavior
+- sidepanel/features/bootstrap.js — tab setup, restore state, settings initialization
+- sidepanel/features/matcher.js — resume analysis logic and report rendering
+- sidepanel/features/prep.js — interview prep generation and progress tracking
+- sidepanel/features/coverLetter.js — cover letter generation and PDF export
+- sidepanel/features/salary.js — salary estimation and rendering
+- sidepanel/features/scan.js — bulk job scanning and filtering
+- sidepanel/features/tracker.js — tracker loading and status management
+- sidepanel/services/aiProviders.js — non-Google provider scan adapters
+- sidepanel/services/geminiClient.js — Gemini fetch, retry, and fallback logic
+- sidepanel/services/storage.js — Chrome storage helpers
+- sidepanel/services/tabMessaging.js — tab text extraction and page access helpers
+- sidepanel/resumeParser.js — local resume parsing
+- content/content.js — content extraction helper for job pages
+- lib/pdfjs — PDF runtime bundle
+- google-apps-script.js — Apps Script integration for Sheets sync
 
-## Gemini fallback behavior
+---
 
-The current fallback order in the code is:
+## Improvements to make
 
-1. `gemini-2.5-pro`
-2. `gemini-2.5-flash`
-3. `gemini-2.0-flash`
-4. `gemini-2.0-flash-lite`
+### 1. Token efficiency improvements
 
-If one Gemini attempt times out, returns a busy/quota error, or reports that a model is unavailable, the code retries the next model in the list instead of stopping immediately.
+- Add per-feature output caps such as maxOutputTokens and shorter output schema payloads where possible.
+- Reduce prompt size before every Gemini call: trim long job descriptions, collapse repeated context, and avoid sending unnecessary schema-heavy text for low-value sections.
+- Disable or skip expensive sections early when the user has not enabled them in Settings.
+- Make the Resume Matcher use a smaller, better-targeted prompt for each enabled block rather than a single large monolithic request.
+- Consider sending only the most relevant excerpts from the job description instead of the entire raw posting.
 
-## Notes
+### 2. Fragile logic and reliability issues
 
-- The panel keeps per-tab state in `chrome.storage.session` for the resume matcher.
-- The Interview Prep question progress is generated fresh for the active job page and synced to the sheet rather than relying on older browser-local cached data.
-- The project is a browser extension, not a Node.js application with an npm package setup.
+- Gemini is currently a hard dependency for many core features. This makes the app vulnerable to quota limits and 429 errors across the whole workflow.
+- The Gemini retry logic is limited to a small hardcoded model list and does not include provider-aware routing or backoff policy.
+- Short 10-second timeouts may be too aggressive for a model under load and can increase false retry loops.
+- Some flows re-call Gemini repeatedly for nearby tasks without strong caching or deduplication.
+- URL-based duplicate checks are useful, but they depend on correct URL matching and sheet availability; they should be treated as best-effort optimization, not a guarantee.
 
-## Senior architecture review: improvement roadmap
+### 3. Provider routing and failover strategy
 
-This project has a strong product idea and a clear user experience, but the current implementation is starting to show the classic signs of a feature-rich single-file extension that has outgrown its original structure. The biggest opportunity is not adding more features; it is making the codebase easier to reason about, test, and evolve.
+- Add a provider router with priority rules: cheaper or lower-latency provider first, Gemini as fallback for schema-heavy tasks.
+- If Gemini returns quota or busy errors, immediately switch to another configured provider instead of retrying several models in sequence.
+- Use exponential backoff with jitter before retrying a provider.
+- Keep a per-feature provider preference map so different tabs use the appropriate model/provider combination.
 
-### What is working well
+### 4. Better state and UX resilience
 
-- The extension has a clear product narrative: resume match, interview prep, and job scanning are all cohesive.
-- The prompt engineering and response-schema approach is thoughtful and gives the AI outputs structure.
-- The UI feels polished for a browser-extension MVP and the user flows are fairly complete.
-- The use of browser storage for persistence is appropriate for this type of app.
+- Centralize “last analysis” deduplication and save status checks so fewer duplicate requests are triggered.
+- Show clearer user-facing feedback when a model is busy, quota-limited, or fallback is active.
+- Add soft rate limiting for scan jobs and multi-source prep workflows so they do not hammer the API in parallel without bounds.
+- Track provider/model telemetry so users can see which model actually handled a request and which requests were rejected.
 
-### Highest-priority concerns
+### 5. Code review recommendations
 
-#### 1. The side panel code is too large and mixes too many responsibilities
+- Keep the README and actual implementation aligned; the fallback model list and required-provider assumptions should be reviewed together.
+- Separate core business logic from UI concerns to make failures easier to diagnose.
+- Standardize error handling across all provider adapters so the app reacts consistently to quota, timeout, and malformed response cases.
+- Add automated tests around provider fallback, schema validation, and save/dedupe logic to prevent regressions.
 
-The main file [sidepanel/sidepanel.js](sidepanel/sidepanel.js) is doing far too much at once:
+### 6. Recommended direction
 
-- DOM rendering and event wiring
-- AI orchestration and prompt assembly
-- provider-specific network calls
-- state persistence
-- tab extraction and content-script coordination
-- business logic for resume analysis, prep generation, salary estimation, and scan workflows
-
-This makes the code hard to maintain, hard to test, and risky to change. A senior architect would break this into focused modules such as:
-
-- state/store layer
-- AI service layer
-- storage service layer
-- UI rendering helpers
-- tab-extraction helpers
-- feature-specific controllers
-
-Suggested target: keep each module focused on one responsibility and avoid cross-coupling between UI and business logic.
-
-#### 2. The codebase lacks a real architecture boundary between UI and business logic
-
-Right now, the UI layer and the feature logic are tightly coupled. That means small changes can create cascading side effects and make debugging painful. The extension would benefit from a small, explicit application architecture:
-
-- a central state store for current job, resume, analysis results, prep areas, and scan results
-- feature controllers that react to state changes
-- UI components that render from state instead of directly mutating many globals
-
-This is the single biggest improvement if the extension is expected to grow beyond a prototype.
-
-#### 3. AI provider handling is embedded directly into the UI flow
-
-The current implementation has provider logic spread across multiple places and the error handling is largely ad hoc. The extension should have one consistent AI gateway that handles:
-
-- provider selection
-- retries and fallback behavior
-- timeout handling
-- model-specific errors
-- normalized error formatting
-- request cancellation and abort safety
-
-This would make the product more resilient and much easier to extend when adding new providers or changing prompts.
-
-#### 4. Error handling is too loose and often silently hides failures
-
-There are multiple places where failures are swallowed with empty catch blocks, which creates hidden breakage. For example, background setup, some message listeners, and several async flows simply log and continue. That is risky for a tool that depends on external APIs and user content.
-
-Recommended direction:
-
-- replace silent failure paths with explicit, user-visible states
-- introduce consistent error types and messages
-- distinguish transient failures from hard failures
-- log meaningful context instead of generic console noise
-
-#### 5. The content extraction layer is heuristic-heavy and brittle
-
-The content script is doing a lot of DOM scraping with hard-coded selectors and a large list of heuristics. That may work for some sites, but it is fragile and will break on layout changes and unsupported job boards.
-
-Improvement areas:
-
-- separate extraction strategy by site pattern
-- support more structured fallback paths
-- use more robust text normalization and cleanup
-- add targeted tests for known job pages
-- define a clear contract for the content extractor output
-
-#### 6. The extension would benefit from a proper testing strategy
-
-There are no visible tests for:
-
-- prompt generation
-- extraction heuristics
-- response parsing
-- storage state transitions
-- feature-specific UI logic
-
-This is the biggest gap if you want to ship confidently. A good next step is to introduce:
-
-- unit tests for pure helpers
-- integration tests for the AI service layer
-- lightweight UI tests for critical flows
-- fixture-based tests for content extraction
-
-#### 7. The persistence and sync model should be formalized
-
-The extension uses browser storage and Google Sheets sync in a fairly ad hoc way. The payloads are not strongly validated and the sync code is tightly coupled to the UI state. A better structure would define:
-
-- a schema for persisted state
-- versioned storage keys
-- explicit save/load contracts
-- idempotent sync behavior
-- clear handling for partial failures
-
-#### 8. Security and privacy should be treated as a first-class concern
-
-The extension stores API keys and user resume content locally. That is expected for a local extension, but it should still be treated carefully. Improvement areas include:
-
-- validating secrets before use
-- avoiding accidental exposure in logs
-- limiting what is sent to external providers
-- clearly documenting what is stored where
-- adding a safer approach for webhook-based sync integration
-
-### Suggested implementation order
-
-#### Phase 1 — architecture cleanup
-
-1. Extract the AI provider layer into a dedicated service module.
-2. Extract storage and state handling into separate modules.
-3. Break the large side panel controller into smaller feature controllers.
-4. Introduce a simple state store rather than relying on multiple globals.
-
-#### Phase 2 — resilience and quality
-
-1. Add consistent error handling and user feedback.
-2. Improve content extraction robustness.
-3. Add a retry/backoff strategy for network and provider failures.
-4. Add telemetry or structured logging for failures.
-
-#### Phase 3 — maintainability and confidence
-
-1. Add tests for core parsing and state transitions.
-2. Introduce linting and formatting rules.
-3. Add a lightweight CI pipeline for static checks.
-4. Add a documented extension architecture guide for future contributors.
-
-### Concrete refactor targets
-
-The most valuable files to refactor first are:
-
-- [sidepanel/sidepanel.js](sidepanel/sidepanel.js): split by feature and responsibility.
-- [sidepanel/aiProviders.js](sidepanel/aiProviders.js): formalize as the single AI gateway.
-- [options.js](options.js): reduce duplicated config/state handling and make settings logic reusable.
-- [content/content.js](content/content.js): move extraction logic into a more structured and testable pipeline.
-- [google-apps-script.js](google-apps-script.js): introduce validation, auth, and more robust spreadsheet update behavior.
-
-### Recommended engineering standards for the next iteration
-
-- Keep modules under a manageable size and single responsibility.
-- Prefer explicit interfaces over hidden shared state.
-- Avoid silent catches in production paths.
-- Make side effects testable and isolated from rendering.
-- Treat AI calls, content extraction, and storage as services, not UI concerns.
-- Add tests before major refactors.
-
-### Bottom line
-
-The product already has a compelling concept and a usable MVP. The main gap is architectural discipline. If you fix the structure first, the extension will become much easier to extend, much safer to evolve, and far more maintainable in the long term.
+The strongest next step is to make Gemini a fallback provider rather than the default central engine for every tab. The app already contains the right building blocks for a multi-provider model strategy, and using those consistently would reduce both 429 pressure and token waste while preserving the current feature set.
