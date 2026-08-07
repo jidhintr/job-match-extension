@@ -66,6 +66,7 @@ export const saveScanBtn = document.getElementById("saveScanBtn");
 export const scanStatusLine = document.getElementById("scanStatusLine");
 export const scanResultsList = document.getElementById("scanResultsList");
 
+export const trackerSearchInput = document.getElementById("trackerSearchInput");
 export const trackerStatusFilter = document.getElementById("trackerStatusFilter");
 export const trackerSortSelect = document.getElementById("trackerSortSelect");
 export const refreshTrackerBtn = document.getElementById("refreshTrackerBtn");

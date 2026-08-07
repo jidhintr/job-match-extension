@@ -3,6 +3,7 @@ import { fetchFromSheets, postToSheets } from "../services/sheetsSync.js";
 import { createStatusLine } from "../ui/statusLine.js";
 import { splitCsv } from "../ui/format.js";
 import {
+  trackerSearchInput,
   trackerStatusFilter,
   trackerSortSelect,
   refreshTrackerBtn,
@@ -185,10 +186,18 @@ function sortItems(items) {
   return dir === "desc" ? sorted.reverse() : sorted;
 }
 
+function matchesSearch(item, query) {
+  if (!query) return true;
+  return `${item.companyName || ""} ${item.jobTitle || ""}`.toLowerCase().includes(query);
+}
+
 function filteredSortedItems() {
-  const filtered = state.tracker.statusFilter === "All"
-    ? state.tracker.items
-    : state.tracker.items.filter((it) => (it.status || "Pending") === state.tracker.statusFilter);
+  const query = state.tracker.searchQuery.trim().toLowerCase();
+  const filtered = state.tracker.items.filter(
+    (it) =>
+      (state.tracker.statusFilter === "All" || (it.status || "Pending") === state.tracker.statusFilter) &&
+      matchesSearch(it, query)
+  );
   return sortItems(filtered);
 }
 
@@ -305,6 +314,11 @@ function renderTrackerList() {
 
   items.forEach((item) => trackerList.appendChild(buildCard(item)));
 }
+
+trackerSearchInput.addEventListener("input", () => {
+  state.tracker.searchQuery = trackerSearchInput.value;
+  renderTrackerList();
+});
 
 trackerStatusFilter.addEventListener("change", () => {
   state.tracker.statusFilter = trackerStatusFilter.value;

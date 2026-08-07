@@ -52,6 +52,7 @@ export const state = {
     loaded: false,
     loading: false,
     statusFilter: "All",
+    searchQuery: "",
     sortBy: "date-desc"
   }
 };

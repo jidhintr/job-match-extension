@@ -1092,9 +1092,24 @@ h4.neutral:first-of-type { margin-top: 0; }
 
 .tracker-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
 }
+
+.tracker-search {
+  flex: 1 1 140px;
+  min-width: 0;
+  background: #14161f;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: inherit;
+}
+.tracker-search::placeholder { color: var(--muted); }
+.tracker-search:focus { outline: none; border-color: var(--accent); }
 
 .tracker-select {
   flex: 1;
