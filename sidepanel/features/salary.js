@@ -99,7 +99,11 @@ function renderSalaryResult(data) {
     const row = document.createElement("div");
     row.className = "prep-checkbox-label";
     row.style.justifyContent = "space-between";
-    row.innerHTML = `<strong>${label}</strong><span>${m || "—"} / mo &nbsp;·&nbsp; ${a || "—"} / yr</span>`;
+    const labelEl = document.createElement("strong");
+    labelEl.textContent = label;
+    const valueEl = document.createElement("span");
+    valueEl.textContent = `${m || "—"} / mo · ${a || "—"} / yr`;
+    row.append(labelEl, valueEl);
     salaryResultBody.appendChild(row);
   });
 

@@ -37,7 +37,7 @@ import {
 import { createStatusLine } from "../ui/statusLine.js";
 import { renderReport, sanitizeSectionOrder, applySectionVisibilityAndOrder, buildResultFromSheetItem } from "./matcher.js";
 import { loadTrackerIfNeeded, refreshTrackerStatusOptions, sanitizeTrackerStatusOptions, findSavedJobByUrl, warmTrackerCache } from "./tracker.js";
-import { refreshKpiTab, refreshKpiStatusOptions } from "./kpi.js";
+import { refreshKpiTab, renderKpiIfLoaded } from "./kpi.js";
 import { sanitizeCacheTtlHours } from "../services/trackerCache.js";
 import { sanitizeThreshold, DEFAULT_GUARD_MIN_ATS, DEFAULT_GUARD_MIN_CHANCE, DEFAULT_GUARD_KEYWORDS } from "./saveGuard.js";
 
@@ -320,7 +320,7 @@ onSettingsChanged((changes) => {
   if (changes.trackerStatusOptions) {
     state.settings.trackerStatusOptions = sanitizeTrackerStatusOptions(changes.trackerStatusOptions.newValue);
     refreshTrackerStatusOptions();
-    refreshKpiStatusOptions();
+    renderKpiIfLoaded();
   }
   refreshSetupBanner();
   refreshSourcePicker();

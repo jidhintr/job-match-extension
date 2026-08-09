@@ -96,6 +96,14 @@ The preferred end state is:
 
 - The "Re-Analyze Match" and "Save to Google Sheets" buttons are gone. Analyze Current Page is the single entry point: first click on a known URL serves the free sheet summary, clicking again runs the full analysis, which is also how a re-uploaded resume is re-run.
 
+### Code review hardening
+
+- `safeHttpUrl()` in `ui/format.js` is the only way sheet or model supplied URLs reach a link or `window.open`. Anything that isn't `http:`/`https:` becomes `""`. Never assign a raw `jobUrl`/`applyUrl` to `href` again.
+- No feature builds markup from model output with `innerHTML`. Use `textContent` or element construction.
+- `shared/settingsSchema.js` is the single source for settings defaults and sanitisers, imported by both the side panel and the options page. `options.js` is now `type="module"` for this reason. Add new settings rules there, not in two places.
+- `ensureTrackerItems()` serialises through `loadQueue`, so concurrent callers collapse to one fetch and a forced refresh can never resolve with items an in-flight load is about to replace.
+- `ui/chartKit.js` owns `el`/`svg` and the tooltip + hover/click wiring (`createChartTooltip`). KPI renderers consume it rather than redefining DOM helpers.
+
 ## Future work checklist
 
 - tune model routing logic for each task type

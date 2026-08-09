@@ -24,6 +24,21 @@ export function parseSheetDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+export function safeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+export function withinDays(value, days) {
+  const d = parseSheetDate(value);
+  if (!d) return false;
+  return Date.now() - d.getTime() <= Number(days) * 86400000;
+}
+
 export function splitCsv(value) {
   return String(value || "")
     .split(",")

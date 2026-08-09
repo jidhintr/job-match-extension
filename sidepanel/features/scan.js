@@ -1,3 +1,4 @@
+import { safeHttpUrl } from "../ui/format.js";
 import { state } from "../state/store.js";
 import { callGeminiWithFallback } from "../services/geminiClient.js";
 import { postToSheets } from "../services/sheetsSync.js";
@@ -128,7 +129,8 @@ function buildScanCard(job, i) {
   const titleLink = document.createElement("a");
   titleLink.className = "scan-job-title";
   titleLink.textContent = job.title;
-  titleLink.addEventListener("click", () => window.open(job.applyUrl, "_blank"));
+  const applyUrl = safeHttpUrl(job.applyUrl);
+  titleLink.addEventListener("click", () => applyUrl && window.open(applyUrl, "_blank"));
 
   const matchBadge = document.createElement("span");
   matchBadge.className = "scan-job-match";

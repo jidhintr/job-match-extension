@@ -1,4 +1,4 @@
-import { clampScore, splitCsv, parseSheetDate } from "../ui/format.js";
+import { clampScore, splitCsv, parseSheetDate, withinDays } from "../ui/format.js";
 
 export const SCORE_BANDS = [
   { label: "Weak (0–49)", min: 0, max: 49, colorVar: "--red" },
@@ -7,9 +7,7 @@ export const SCORE_BANDS = [
 ];
 
 export function withinRange(item, days) {
-  const d = parseSheetDate(item.dateTime);
-  if (!d) return false;
-  return Date.now() - d.getTime() <= Number(days) * 86400000;
+  return withinDays(item.dateTime, days);
 }
 
 function average(values) {
@@ -25,7 +23,8 @@ function scoresOf(items, field) {
 
 export function headline(items) {
   const dates = items.map((it) => parseSheetDate(it.dateTime)).filter(Boolean);
-  const days = Math.max(1, Math.ceil((Date.now() - Math.min(...dates.map((d) => d.getTime()))) / 86400000));
+  const earliest = dates.reduce((min, d) => Math.min(min, d.getTime()), Infinity);
+  const days = Math.max(1, Math.ceil((Date.now() - earliest) / 86400000));
   return {
     total: items.length,
     companies: new Set(items.map((it) => String(it.companyName || "").trim().toLowerCase()).filter(Boolean)).size,

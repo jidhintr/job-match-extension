@@ -1,3 +1,15 @@
+import {
+  ANALYSED_STATUS,
+  MAX_TRACKER_STATUSES,
+  DEFAULT_TRACKER_STATUS_OPTIONS,
+  DEFAULT_GUARD_MIN_ATS,
+  DEFAULT_GUARD_MIN_CHANCE,
+  DEFAULT_GUARD_KEYWORDS,
+  sanitizeTrackerStatusOptions,
+  sanitizeCacheTtlHours,
+  sanitizeThreshold
+} from "./shared/settingsSchema.js";
+
 const apiKeyInput = document.getElementById("apiKey");
 const toggleKeyVisibilityBtn = document.getElementById("toggleKeyVisibility");
 const saveKeyBtn = document.getElementById("saveKey");
@@ -45,46 +57,15 @@ const guardKeywordsInput = document.getElementById("guardKeywords");
 const saveGuardSettingsBtn = document.getElementById("saveGuardSettingsBtn");
 const guardStatus = document.getElementById("guardStatus");
 
-function sanitizeThreshold(value, fallback) {
-  const n = Math.round(Number(value));
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(100, Math.max(0, n));
-}
-
 const cacheTtlInput = document.getElementById("cacheTtlHours");
 const saveCacheTtlBtn = document.getElementById("saveCacheTtlBtn");
 const clearCacheBtn = document.getElementById("clearCacheBtn");
 const cacheTtlStatus = document.getElementById("cacheTtlStatus");
-const DEFAULT_CACHE_TTL_HOURS = 2;
-
-function sanitizeCacheTtlHours(value) {
-  const hours = Math.round(Number(value));
-  if (!Number.isFinite(hours)) return DEFAULT_CACHE_TTL_HOURS;
-  return Math.min(24, Math.max(1, hours));
-}
 
 const trackerStatusOptionsStatus = document.getElementById("trackerStatusOptionsStatus");
 const trackerStatusRows = document.getElementById("trackerStatusRows");
 const addTrackerStatusBtn = document.getElementById("addTrackerStatusBtn");
-const MAX_TRACKER_STATUSES = 5;
-const ANALYSED_STATUS = "Analysed";
-const DEFAULT_TRACKER_STATUS_OPTIONS = [
-  { label: "New", enabled: true },
-  { label: "Pending", enabled: true },
-  { label: "Applied", enabled: true },
-  { label: "Rejected", enabled: true }
-];
 let trackerStatusOptions = DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
-
-function sanitizeTrackerStatusOptions(saved) {
-  if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
-  const cleaned = saved
-    .filter((s) => s && typeof s.label === "string" && s.label.trim())
-    .filter((s) => s.label.trim().toLowerCase() !== ANALYSED_STATUS.toLowerCase())
-    .slice(0, MAX_TRACKER_STATUSES)
-    .map((s) => ({ label: s.label.trim(), enabled: s.enabled !== false }));
-  return cleaned.length > 0 ? cleaned : DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
-}
 
 async function saveTrackerStatusOptions() {
   await chrome.storage.local.set({ trackerStatusOptions });
@@ -170,8 +151,7 @@ const DEFAULT_MATCHER_INSTRUCTIONS = `The candidate speaks only English. If the 
 The candidate holds an EU Blue Card and is legally authorized to work in Poland without any visa or employer sponsorship, and is open to the general labor market (not tied to a single employer). For roles based outside Poland, the candidate can generally transfer their Blue Card to another EU country with minimal paperwork under EU intra-mobility rules. Do NOT treat "role is outside Poland" as a negative factor by itself, and do NOT lower chance_of_getting_job for it. ONLY flag it if the job posting explicitly states something like "no visa sponsorship," "must already be authorized to work locally," or "no relocation support" for a role outside Poland.`;
 
 // These mirror the DEFAULT_*_PROMPT constants in sidepanel/features/*.js — kept as plain text
-// here (not imported) because this page is a standalone classic script, same as
-// DEFAULT_MATCHER_INSTRUCTIONS above. A fixed, non-editable line that keeps each response
+// here because importing them would pull in the sidepanel's DOM-bound modules. A fixed, non-editable line that keeps each response
 // matching its JSON schema is appended by the sidepanel after whatever is saved here.
 const DEFAULT_PREP_OVERVIEW_PROMPT = `You are an expert technical interview coach who has studied thousands of real candidate-reported interview experiences from Glassdoor, TeamBlind, and Prepfully.
 
@@ -356,9 +336,9 @@ async function loadSavedValues() {
     "guardKeywords"
   ]);
   cacheTtlInput.value = String(sanitizeCacheTtlHours(stored.cacheTtlHours));
-  guardMinAtsInput.value = String(sanitizeThreshold(stored.guardMinAts, 50));
-  guardMinChanceInput.value = String(sanitizeThreshold(stored.guardMinChance, 40));
-  guardKeywordsInput.value = stored.guardKeywords === undefined ? ".net" : stored.guardKeywords;
+  guardMinAtsInput.value = String(sanitizeThreshold(stored.guardMinAts, DEFAULT_GUARD_MIN_ATS));
+  guardMinChanceInput.value = String(sanitizeThreshold(stored.guardMinChance, DEFAULT_GUARD_MIN_CHANCE));
+  guardKeywordsInput.value = stored.guardKeywords === undefined ? DEFAULT_GUARD_KEYWORDS : stored.guardKeywords;
   if (stored.geminiApiKey) apiKeyInput.value = stored.geminiApiKey;
 
   resumeSectionOrder = sanitizeSectionOrder(stored.resumeSectionOrder);
@@ -471,8 +451,8 @@ Object.entries(tabVisCheckboxes).forEach(([key, checkbox]) => {
 });
 
 saveGuardSettingsBtn.addEventListener("click", async () => {
-  const guardMinAts = sanitizeThreshold(guardMinAtsInput.value, 50);
-  const guardMinChance = sanitizeThreshold(guardMinChanceInput.value, 40);
+  const guardMinAts = sanitizeThreshold(guardMinAtsInput.value, DEFAULT_GUARD_MIN_ATS);
+  const guardMinChance = sanitizeThreshold(guardMinChanceInput.value, DEFAULT_GUARD_MIN_CHANCE);
   guardMinAtsInput.value = String(guardMinAts);
   guardMinChanceInput.value = String(guardMinChance);
   await chrome.storage.local.set({ guardMinAts, guardMinChance, guardKeywords: guardKeywordsInput.value.trim() });

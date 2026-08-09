@@ -1,14 +1,7 @@
+import { sanitizeCacheTtlHours } from "../../shared/settingsSchema.js";
+export { sanitizeCacheTtlHours };
+
 const CACHE_KEY = "trackerCache";
-
-export const DEFAULT_CACHE_TTL_HOURS = 2;
-export const MIN_CACHE_TTL_HOURS = 1;
-export const MAX_CACHE_TTL_HOURS = 24;
-
-export function sanitizeCacheTtlHours(value) {
-  const hours = Math.round(Number(value));
-  if (!Number.isFinite(hours)) return DEFAULT_CACHE_TTL_HOURS;
-  return Math.min(MAX_CACHE_TTL_HOURS, Math.max(MIN_CACHE_TTL_HOURS, hours));
-}
 
 export async function readTrackerCache() {
   const stored = await chrome.storage.local.get(CACHE_KEY);

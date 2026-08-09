@@ -1,5 +1,6 @@
 import { state } from "../state/store.js";
 import { createStatusLine } from "../ui/statusLine.js";
+import { el, svg, createChartTooltip } from "../ui/chartKit.js";
 import { ensureTrackerItems, enabledStatuses, colorForStatus, trackerSourceLabel } from "./tracker.js";
 import {
   headline,
@@ -23,72 +24,7 @@ import {
 } from "../ui/dom.js";
 
 const setKpiStatus = createStatusLine(kpiStatusLine);
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text != null) node.textContent = text;
-  return node;
-}
-
-function svg(tag, attrs) {
-  const node = document.createElementNS(SVG_NS, tag);
-  Object.entries(attrs).forEach(([k, v]) => node.setAttribute(k, String(v)));
-  return node;
-}
-
-const tooltip = el("div", "kpi-tip hidden");
-kpiView.appendChild(tooltip);
-
-function showTooltip(title, rows, hint) {
-  tooltip.innerHTML = "";
-  tooltip.appendChild(el("div", "kpi-tip-title", title));
-  rows.filter(Boolean).forEach((row) => tooltip.appendChild(el("div", "kpi-tip-row", row)));
-  if (hint) tooltip.appendChild(el("div", "kpi-tip-hint", hint));
-  tooltip.classList.remove("hidden");
-}
-
-function moveTooltip(event) {
-  const bounds = kpiView.getBoundingClientRect();
-  const x = event.clientX - bounds.left;
-  const y = event.clientY - bounds.top;
-  tooltip.style.left = `${Math.min(Math.max(8, x + 12), bounds.width - tooltip.offsetWidth - 8)}px`;
-  tooltip.style.top = `${Math.max(8, y - tooltip.offsetHeight - 12)}px`;
-}
-
-function hideTooltip() {
-  tooltip.classList.add("hidden");
-}
-
-function interactive(node, { title, rows, hint, onClick, peers = [] }) {
-  node.classList.add("kpi-interactive");
-  if (onClick) node.classList.add("kpi-clickable");
-
-  node.addEventListener("mouseenter", (event) => {
-    showTooltip(title, rows, hint);
-    moveTooltip(event);
-    node.classList.add("is-active");
-    peers.forEach((p) => p.classList.add("is-active"));
-  });
-  node.addEventListener("mousemove", moveTooltip);
-  node.addEventListener("mouseleave", () => {
-    hideTooltip();
-    node.classList.remove("is-active");
-    peers.forEach((p) => p.classList.remove("is-active"));
-  });
-
-  if (onClick) {
-    node.addEventListener("click", () => {
-      hideTooltip();
-      onClick();
-    });
-  }
-}
-
-function goToTracker(detail) {
-  window.dispatchEvent(new CustomEvent("app:navigate", { detail: { tab: "tracker", ...detail } }));
-}
+const { interactive } = createChartTooltip(kpiView);
 
 function section(title, subtitle) {
   const card = el("div", "kpi-section");
@@ -97,6 +33,10 @@ function section(title, subtitle) {
   if (subtitle) head.appendChild(el("div", "kpi-section-note", subtitle));
   card.appendChild(head);
   return card;
+}
+
+function goToTracker(detail) {
+  window.dispatchEvent(new CustomEvent("app:navigate", { detail: { tab: "tracker", ...detail } }));
 }
 
 function renderHeadline(stats) {
@@ -506,13 +446,11 @@ export function refreshKpiTab() {
   loadKpiData({ force: false });
 }
 
-export function refreshKpiStatusOptions() {
+export function renderKpiIfLoaded() {
   if (state.tracker.loaded) renderKpi();
 }
 
-window.addEventListener("tracker:updated", () => {
-  if (state.tracker.loaded) renderKpi();
-});
+window.addEventListener("tracker:updated", renderKpiIfLoaded);
 
 kpiRangeSelect.addEventListener("change", () => {
   state.kpi.range = kpiRangeSelect.value;

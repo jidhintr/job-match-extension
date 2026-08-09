@@ -1,8 +1,14 @@
 import { state } from "../state/store.js";
 import { fetchFromSheets, postToSheets } from "../services/sheetsSync.js";
 import { createStatusLine } from "../ui/statusLine.js";
-import { splitCsv, parseSheetDate } from "../ui/format.js";
-import { withinRange } from "./kpiMetrics.js";
+import { splitCsv, parseSheetDate, safeHttpUrl, withinDays } from "../ui/format.js";
+import {
+  ANALYSED_STATUS,
+  DEFAULT_TRACKER_STATUS_OPTIONS,
+  MAX_TRACKER_STATUSES,
+  sanitizeTrackerStatusOptions
+} from "../../shared/settingsSchema.js";
+export { ANALYSED_STATUS, MAX_TRACKER_STATUSES, sanitizeTrackerStatusOptions };
 import { readTrackerCache, writeTrackerCache, clearTrackerCache, isCacheFresh, cacheAgeLabel } from "../services/trackerCache.js";
 import {
   trackerSearchInput,
@@ -17,37 +23,12 @@ import {
 
 const setTrackerStatus = createStatusLine(trackerStatusLine);
 
-// Default seed only — the actual set is fully user-editable via Settings > Tracker Statuses
-// (rename, enable/disable, add up to MAX_TRACKER_STATUSES). google-apps-script.js no longer
-// enforces a fixed enum, so any label configured here is valid to send/store as-is.
-export const MAX_TRACKER_STATUSES = 5;
-export const DEFAULT_TRACKER_STATUS_OPTIONS = [
-  { label: "New", enabled: true },
-  { label: "Pending", enabled: true },
-  { label: "Applied", enabled: true },
-  { label: "Rejected", enabled: true }
-];
-
-// Reserved system status. The matcher stamps it on every row it auto-saves the moment an analysis
-// finishes, so it must always be filterable and selectable regardless of what the user configured
-// in Settings — it is deliberately not part of the editable list and doesn't count toward the max.
-export const ANALYSED_STATUS = "Analysed";
 const ANALYSED_STATUS_COLOR = "#ec4899";
 
 // Colors are assigned by position in the configured list, not by name — that's what lets a
 // renamed status ("Open" instead of "New") keep a stable, distinguishing color.
 const STATUS_COLOR_PALETTE = ["#4c8dff", "#d99a3d", "#34c07b", "#e5484d", "#8b5cf6"];
 const UNKNOWN_STATUS_COLOR = "#8b90a0";
-
-export function sanitizeTrackerStatusOptions(saved) {
-  if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
-  const cleaned = saved
-    .filter((s) => s && typeof s.label === "string" && s.label.trim())
-    .filter((s) => s.label.trim().toLowerCase() !== ANALYSED_STATUS.toLowerCase())
-    .slice(0, MAX_TRACKER_STATUSES)
-    .map((s) => ({ label: s.label.trim(), enabled: s.enabled !== false }));
-  return cleaned.length > 0 ? cleaned : DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
-}
 
 export function configuredStatuses() {
   return state.settings.trackerStatusOptions && state.settings.trackerStatusOptions.length > 0
@@ -123,8 +104,6 @@ window.addEventListener("tracker:refresh", () => {
 });
 
 export async function refreshTrackerFromSheet() {
-  if (state.tracker.loading) return state.tracker.items;
-
   await clearTrackerCache();
   state.tracker.loaded = false;
   state.tracker.cachedAt = null;
@@ -148,7 +127,6 @@ function formatDateTime(value) {
 
 // GET is a plain fetch against the Apps Script webhook — application logic only, never an AI call.
 async function loadTrackerData({ force = false } = {}) {
-  if (state.tracker.loading) return;
   if (state.tracker.loaded && !force) {
     renderTrackerList();
     return;
@@ -174,9 +152,19 @@ export function loadTrackerIfNeeded() {
   loadTrackerData({ force: false });
 }
 
-export async function ensureTrackerItems({ force = false } = {}) {
+// Serialised so concurrent callers (tab switch, warm-up, post-save refresh) can never overlap
+// fetches or resolve with items an in-flight load is about to replace.
+let loadQueue = Promise.resolve();
+
+export function ensureTrackerItems({ force = false } = {}) {
+  if (state.tracker.loaded && !force) return Promise.resolve(state.tracker.items);
+  const run = loadQueue.then(() => loadTrackerItems(force), () => loadTrackerItems(force));
+  loadQueue = run.catch(() => {});
+  return run;
+}
+
+async function loadTrackerItems(force) {
   if (state.tracker.loaded && !force) return state.tracker.items;
-  if (state.tracker.loading) return state.tracker.items;
 
   if (!force) {
     const cache = await readTrackerCache();
@@ -236,7 +224,7 @@ function filteredSortedItems() {
   const query = state.tracker.searchQuery.trim().toLowerCase();
   const filtered = state.tracker.items.filter(
     (it) =>
-      withinRange(it, state.tracker.range) &&
+      withinDays(it.dateTime, state.tracker.range) &&
       (state.tracker.statusFilter === "All" || (it.status || "Pending") === state.tracker.statusFilter) &&
       matchesSearch(it, query)
   );
@@ -300,7 +288,7 @@ function buildCard(item) {
   const titleLink = document.createElement("a");
   titleLink.className = "tracker-card-title";
   titleLink.textContent = item.jobTitle || "(untitled role)";
-  titleLink.href = item.jobUrl || "#";
+  titleLink.href = safeHttpUrl(item.jobUrl) || "#";
   titleLink.target = "_blank";
   titleLink.rel = "noopener noreferrer";
 

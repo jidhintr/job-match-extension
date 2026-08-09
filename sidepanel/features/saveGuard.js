@@ -1,15 +1,13 @@
 import { clampScore, splitCsv } from "../ui/format.js";
 import { saveGuardModal, saveGuardReasons, saveGuardConfirmBtn, saveGuardDiscardBtn } from "../ui/dom.js";
 
-export const DEFAULT_GUARD_MIN_ATS = 50;
-export const DEFAULT_GUARD_MIN_CHANCE = 40;
-export const DEFAULT_GUARD_KEYWORDS = ".net";
-
-export function sanitizeThreshold(value, fallback) {
-  const n = Math.round(Number(value));
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(100, Math.max(0, n));
-}
+import {
+  DEFAULT_GUARD_MIN_ATS,
+  DEFAULT_GUARD_MIN_CHANCE,
+  DEFAULT_GUARD_KEYWORDS,
+  sanitizeThreshold
+} from "../../shared/settingsSchema.js";
+export { DEFAULT_GUARD_MIN_ATS, DEFAULT_GUARD_MIN_CHANCE, DEFAULT_GUARD_KEYWORDS, sanitizeThreshold };
 
 export function matchesAutoSaveKeyword(jobText, keywords) {
   const list = splitCsv(keywords).map((k) => k.toLowerCase());
@@ -52,6 +50,8 @@ function close(decision) {
 }
 
 export function confirmSave(reasons) {
+  if (pendingResolve) close(false);
+
   saveGuardReasons.innerHTML = "";
   reasons.forEach((reason) => {
     const li = document.createElement("li");
