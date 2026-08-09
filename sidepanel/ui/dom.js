@@ -21,6 +21,7 @@ export const resumeSavedTag = document.getElementById("resumeSavedTag");
 
 export const dashboard = document.getElementById("dashboard");
 export const glitterLayer = document.getElementById("glitterLayer");
+export const gaugeTip = document.getElementById("gaugeTip");
 
 export const atsGauge = {
   card: document.getElementById("atsGaugeCard"),

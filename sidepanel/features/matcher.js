@@ -14,6 +14,7 @@ import {
   glitterLayer,
   atsGauge,
   chanceGauge,
+  gaugeTip,
   jobIdentity,
   jobRoleTitle,
   jobCompanyName,
@@ -183,13 +184,13 @@ const DEEP_ANALYSIS_BLOCK_IDS = ["stage1Block", "stage2Block", "stage3Block", "g
 // Each enabled section adds its own maxTokens on top, so the budget shrinks automatically when
 // sections are disabled in Settings. These are deliberately generous — the cap exists to bound
 // runaway cost, and callGeminiWithFallback retries uncapped if a response ever needs more room.
-const BASE_OUTPUT_TOKENS = 600;
+const BASE_OUTPUT_TOKENS = 750;
 
 function buildAnalysisPromptAndSchema(sectionOrder) {
   const enabledIds = (sectionOrder || DEFAULT_SECTION_ORDER).filter((s) => s.enabled).map((s) => s.id);
   const enabledSections = RESUME_SECTIONS.filter((s) => enabledIds.includes(s.id));
 
-  let step = 4;
+  let step = 5;
   const stepLines = enabledSections.map((s) => `${step++}. ${s.promptStep}`).join("\n");
 
   const candidateContext = (state.settings.customInstructions.matcher || "").trim() || "(none provided)";
@@ -207,6 +208,7 @@ Follow this evaluation process:
 1. Identify company_name (the hiring company's name exactly as it appears in the posting) and job_title (the role title exactly as posted).
 2. Simulate how an ATS would parse and score the resume against the job description's keywords, required skills, and qualifications. ats_score MUST be a whole number from 0 to 100 (a percentage) — never a 0–1 fraction like 0.65.
 3. Estimate the realistic chance a qualified human recruiter would move this candidate forward, considering ATS score, experience relevance, and seniority match. chance_of_getting_job MUST also be a whole number from 0 to 100 (a percentage), subject to the language-barrier override above.
+4. Fill score_factors with what held each score DOWN — never strengths. score_factors.ats = missing keywords, requirements or qualifications the ATS could not match. score_factors.chance = experience, seniority, credibility or hard blockers a recruiter would hesitate on. At most 4 items each, under 8 words per item, empty array if nothing held that score back.
 ${stepLines}
 
 Be specific and reference actual terms from the job description and resume wherever possible. Avoid generic filler advice. Do not be falsely encouraging — if the match is weak, say so clearly in the scores and gaps.
@@ -227,9 +229,17 @@ Respond with ONLY a single valid JSON object matching the required response sche
         visa_sponsorship_concern: { type: "STRING" }
       },
       required: ["language_barrier", "visa_sponsorship_concern"]
+    },
+    score_factors: {
+      type: "OBJECT",
+      properties: {
+        ats: { type: "ARRAY", items: { type: "STRING" } },
+        chance: { type: "ARRAY", items: { type: "STRING" } }
+      },
+      required: ["ats", "chance"]
     }
   };
-  const required = ["company_name", "job_title", "ats_score", "chance_of_getting_job", "warnings"];
+  const required = ["company_name", "job_title", "ats_score", "chance_of_getting_job", "warnings", "score_factors"];
 
   enabledSections.forEach((s) => {
     Object.assign(properties, s.schema);
@@ -335,7 +345,77 @@ function spawnGlitterBurst() {
   }, 2200);
 }
 
-function renderDashboard(atsScore, chanceScore) {
+const MAX_TIP_FACTORS = 6;
+
+// The model states these directly in score_factors; results saved before that field existed (and
+// sheet-reconstructed summaries) fall back to the negative signals already present in the report.
+function scoreFactors(result, kind) {
+  const stated = result.score_factors?.[kind];
+  if (Array.isArray(stated) && stated.length > 0) return stated.slice(0, MAX_TIP_FACTORS);
+
+  const derived = kind === "ats"
+    ? [
+        ...(result.missing_skills || []),
+        ...(result.stage_3_tech_gap_table || [])
+          .filter((row) => row.severity !== "Low")
+          .map((row) => `${row.technology} — ${row.severity} gap`)
+      ]
+    : [
+        result.warnings?.language_barrier,
+        result.warnings?.visa_sponsorship_concern,
+        ...(result.stage_2_mindset_breakdown?.weak_areas || []),
+        ...(result.stage_2_mindset_breakdown?.credibility_gaps || []),
+        ...(result.stage_1_attention_test?.forgettable || [])
+      ];
+
+  return derived.filter(Boolean).slice(0, MAX_TIP_FACTORS);
+}
+
+const gaugeTipContent = { ats: [], chance: [] };
+const GAUGE_TIP_TITLES = { ats: "Holding the ATS score down", chance: "Holding the chance down" };
+
+function showGaugeTip(kind, card) {
+  if (report.classList.contains("hidden")) return;
+  const factors = gaugeTipContent[kind];
+  gaugeTip.innerHTML = "";
+
+  const title = document.createElement("div");
+  title.className = "gauge-tip-title";
+  title.textContent = GAUGE_TIP_TITLES[kind];
+  gaugeTip.appendChild(title);
+
+  if (factors.length === 0) {
+    const none = document.createElement("p");
+    none.textContent = "Nothing specific is dragging this score down.";
+    gaugeTip.appendChild(none);
+  } else {
+    const list = document.createElement("ul");
+    factors.forEach((f) => {
+      const li = document.createElement("li");
+      li.textContent = f;
+      list.appendChild(li);
+    });
+    gaugeTip.appendChild(list);
+  }
+
+  gaugeTip.classList.remove("hidden");
+  card.classList.add("tip-open");
+}
+
+function hideGaugeTip(card) {
+  gaugeTip.classList.add("hidden");
+  card.classList.remove("tip-open");
+}
+
+for (const [kind, gauge] of [["ats", atsGauge], ["chance", chanceGauge]]) {
+  gauge.card.addEventListener("mouseenter", () => showGaugeTip(kind, gauge.card));
+  gauge.card.addEventListener("mouseleave", () => hideGaugeTip(gauge.card));
+}
+
+function renderDashboard(result, atsScore, chanceScore) {
+  gaugeTipContent.ats = scoreFactors(result, "ats");
+  gaugeTipContent.chance = scoreFactors(result, "chance");
+
   const clampedAts = renderGaugeInto(atsGauge, atsScore);
   const clampedChance = renderGaugeInto(chanceGauge, chanceScore);
 
@@ -411,7 +491,7 @@ export function renderReport(result) {
   renderWarnings(result.warnings);
 
   const chanceScore = result.warnings?.language_barrier ? 0 : result.chance_of_getting_job;
-  renderDashboard(result.ats_score, chanceScore);
+  renderDashboard(result, result.ats_score, chanceScore);
 
   fillPills(document.getElementById("missingSkillsList"), result.missing_skills, "missing");
 

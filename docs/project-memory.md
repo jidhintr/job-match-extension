@@ -58,6 +58,13 @@ The preferred end state is:
 - The boilerplate filter in `condenseText()` only applies to lines of 60 chars or less, so real prose that mentions "sign in", "privacy policy" etc. survives. Do not widen it to match anywhere in a line.
 - Rejected: one Gemini request per matcher block. Input tokens dominate that call, so re-sending the resume and posting per block costs more than the single combined request.
 
+### Tracker search + gauge explainability
+
+- Tracker toolbar has a search box left of the status dropdown. `state.tracker.searchQuery` filters cards on company name and job title, combined with the status filter in `filteredSortedItems()`. Pure client-side filtering over the already-fetched `state.tracker.items` — no extra Sheets requests.
+- Both gauges explain themselves on hover via a shared `#gaugeTip` popup in the gauges row. Only negative factors are listed.
+- The model fills a new required `score_factors: { ats, chance }` field (max 4 short items each), covered by the `BASE_OUTPUT_TOKENS` bump from 600 to 750.
+- `scoreFactors()` falls back to signals already in the report (missing skills, non-Low tech gap rows, weak areas, credibility gaps, forgettable, warnings) so results saved before this field — and sheet-reconstructed summaries — still explain their scores without a re-analysis.
+
 ## Future work checklist
 
 - tune model routing logic for each task type
