@@ -163,13 +163,28 @@ Purpose: track applications and statuses across jobs saved to Google Sheets.
 Current behaviors:
 
 - fetches tracked job rows from the Sheets webhook
-- supports status filtering and sorting
+- supports free-text search on company name and job title, plus status filtering and sorting
 - supports custom status labels configured in Settings
 - lets users update status values via dropdown on each card
 - color-codes statuses based on configuration
 - reuses the same tracker data for duplicate checks when deciding whether a job has already been analyzed
 
-### 7. Settings page
+### 7. KPI tab
+
+Purpose: analyse the tracked job data as a whole instead of one card at a time.
+
+Current behaviors (phase 1 — Google Sheets only, no AI calls):
+
+- reuses the Tracker's cached sheet rows, so opening the tab costs no extra request
+- headline tiles: tracked jobs, distinct companies, average ATS, average chance
+- pipeline breakdown by status, ordered by the status list configured in Settings
+- jobs saved per week or per month, filterable to all time / 30 / 90 / 365 days
+- ATS and chance spread across weak / borderline / strong bands
+- top missing skills and most applied companies by frequency
+
+Known limit: the sheet records only when a job was saved, not when its status changed, so time-in-stage is out of scope until the phase 2 Gmail cross-check.
+
+### 8. Settings page
 
 Purpose: configuration and operational control.
 
@@ -252,6 +267,8 @@ This makes Gemini a central dependency for the main workflow, even though the ap
 - sidepanel/features/salary.js — salary estimation and rendering
 - sidepanel/features/scan.js — bulk job scanning and filtering
 - sidepanel/features/tracker.js — tracker loading and status management
+- sidepanel/features/kpi.js — KPI tab rendering
+- sidepanel/features/kpiMetrics.js — pure KPI calculations over the tracked job rows
 - sidepanel/services/aiProviders.js — non-Google provider scan adapters
 - sidepanel/services/geminiClient.js — Gemini fetch, retry, and fallback logic
 - sidepanel/services/storage.js — Chrome storage helpers

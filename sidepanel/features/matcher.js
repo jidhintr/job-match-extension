@@ -5,11 +5,10 @@ import { condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
 import { extractJobTextFromActiveTab } from "../services/tabMessaging.js";
 import { fillList, fillPills, fillTechGapTable } from "../ui/renderHelpers.js";
 import { clampScore, splitCsv } from "../ui/format.js";
-import { findSavedJobByUrl } from "./tracker.js";
+import { findSavedJobByUrl, refreshTrackerFromSheet, ANALYSED_STATUS } from "./tracker.js";
+import { evaluateSaveGuard, confirmSave } from "./saveGuard.js";
 import {
   analyzeBtn,
-  reanalyzeBtn,
-  saveSheetsBtn,
   dashboard,
   glitterLayer,
   atsGauge,
@@ -29,7 +28,6 @@ import {
   effectiveResume,
   hasUsableResume,
   setStatus,
-  refreshSaveSheetsButton,
   refreshApplyButtons,
   persistTabSessionState
 } from "./bootstrap.js";
@@ -274,7 +272,6 @@ export function applySectionVisibilityAndOrder() {
 
 function setBusy(isBusy, label) {
   analyzeBtn.disabled = isBusy || !state.settings.apiKey || !hasUsableResume();
-  reanalyzeBtn.disabled = isBusy || !state.matcher.lastJobText;
   if (isBusy) setStatus(label || "Working...");
 }
 
@@ -541,7 +538,7 @@ export function renderReport(result) {
 // only the score gauges, missing skills, and add/remove skills pills. The deep-dive sections
 // (attention test, mindset breakdown, tech gap table, good fit, role prep, company insights)
 // were never saved anywhere, so they render as their normal "not enough information" placeholders
-// until the user explicitly runs Re-Analyze to spend tokens on a full report.
+// until the user clicks Analyze again to spend tokens on a full report.
 export function buildResultFromSheetItem(item) {
   return {
     company_name: item.companyName || "",
@@ -554,7 +551,7 @@ export function buildResultFromSheetItem(item) {
   };
 }
 
-async function runAnalysis({ reextract }) {
+async function runAnalysis() {
   if (!state.settings.apiKey || !hasUsableResume()) {
     setStatus("Add your API key and resume in Settings first.", "err");
     chrome.runtime.openOptionsPage();
@@ -562,37 +559,31 @@ async function runAnalysis({ reextract }) {
   }
 
   try {
-    const willReextract = reextract || !state.matcher.lastJobText;
-    setBusy(true, willReextract ? "Reading the page..." : "Re-analyzing with updated resume...");
+    setBusy(true, "Reading the page...");
 
-    if (willReextract) {
-      const previousJobUrl = state.matcher.lastJobUrl;
-      const alreadyShowingSheetSummary = state.matcher.savedToSheets && !!state.matcher.lastResult;
+    const previousJobUrl = state.matcher.lastJobUrl;
+    const alreadyShowingSheetSummary = state.matcher.savedToSheets && !!state.matcher.lastResult;
 
-      const extracted = await extractJobTextFromActiveTab(state.tab.currentTabId);
-      state.matcher.lastJobText = extracted.text;
-      state.matcher.lastCompanyGuess = extracted.company;
-      state.matcher.lastJobUrl = extracted.url;
+    const extracted = await extractJobTextFromActiveTab(state.tab.currentTabId);
+    state.matcher.lastJobText = extracted.text;
+    state.matcher.lastCompanyGuess = extracted.company;
+    state.matcher.lastJobUrl = extracted.url;
 
-      // Only the fresh "Analyze Current Page" path checks Sheets first — Re-Analyze (reextract
-      // false) is an explicit request to spend tokens on a full re-run even if a summary exists.
-      // If Analyze is clicked again for the same job that's already showing a sheet summary
-      // (including one restored passively on panel open, before any text was ever extracted),
-      // treat that as the user asking for the full report instead of re-serving the same summary
-      // forever — otherwise there'd be no way to reach a real analysis once a sheet row exists.
-      const clickingAnalyzeAgainForSameJob = alreadyShowingSheetSummary && previousJobUrl === extracted.url;
+    // Clicking Analyze again on the job already showing a sheet summary (including one restored
+    // passively on panel open) is the user asking for the full report — without this there'd be no
+    // way to reach a real analysis, or to re-run against a newly uploaded resume, once a row exists.
+    const clickingAnalyzeAgainForSameJob = alreadyShowingSheetSummary && previousJobUrl === extracted.url;
 
-      if (reextract && !clickingAnalyzeAgainForSameJob) {
-        const saved = await findSavedJobByUrl(extracted.url);
-        if (saved) {
-          const result = buildResultFromSheetItem(saved);
-          renderReport(result);
-          state.matcher.lastResult = result;
-          state.matcher.savedToSheets = true;
-          setStatus("Loaded saved summary from Google Sheets (no tokens used) — click Analyze again for the full report.", "ok");
-          await persistTabSessionState();
-          return;
-        }
+    if (!clickingAnalyzeAgainForSameJob) {
+      const saved = await findSavedJobByUrl(extracted.url);
+      if (saved) {
+        const result = buildResultFromSheetItem(saved);
+        renderReport(result);
+        state.matcher.lastResult = result;
+        state.matcher.savedToSheets = true;
+        setStatus("Loaded saved summary from Google Sheets (no tokens used) — click Analyze again for the full report.", "ok");
+        await persistTabSessionState();
+        return;
       }
     }
 
@@ -607,8 +598,7 @@ async function runAnalysis({ reextract }) {
 
     renderReport(result);
     state.matcher.lastResult = result;
-    state.matcher.savedToSheets = false;
-    setStatus("Analysis complete.", "ok");
+    await autoSaveAnalysis();
     await persistTabSessionState();
   } catch (err) {
     console.error(err);
@@ -618,19 +608,15 @@ async function runAnalysis({ reextract }) {
     setStatus(message, "err");
   } finally {
     setBusy(false);
-    reanalyzeBtn.disabled = !state.matcher.lastJobText;
-    refreshSaveSheetsButton();
     refreshApplyButtons();
   }
 }
 
-async function saveResultToSheets() {
-  if (!state.settings.sheetsWebhookUrl || !state.matcher.lastResult) return;
-
+function buildSheetPayload(isNewRow) {
   const addSkills = state.matcher.lastResult.resume_optimization?.add_skills;
   const removeSkills = state.matcher.lastResult.resume_optimization?.remove_skills;
 
-  const payload = {
+  return {
     type: "job_match",
     dateTime: new Date().toISOString().replace("T", " ").substring(0, 19),
     companyName: state.matcher.lastResult.company_name || "",
@@ -640,38 +626,53 @@ async function saveResultToSheets() {
     missingSkills: Array.isArray(state.matcher.lastResult.missing_skills) ? state.matcher.lastResult.missing_skills.join(", ") : "",
     addSkills: Array.isArray(addSkills) ? addSkills.join(", ") : "",
     removeSkills: Array.isArray(removeSkills) ? removeSkills.join(", ") : "",
-    jobUrl: state.matcher.lastJobUrl || ""
+    jobUrl: state.matcher.lastJobUrl || "",
+    ...(isNewRow ? { status: ANALYSED_STATUS } : {}),
+    defaultStatus: ANALYSED_STATUS
   };
+}
 
-  saveSheetsBtn.disabled = true;
-  saveSheetsBtn.classList.remove("saved");
-  saveSheetsBtn.textContent = "Saving...";
+// status is sent only for a URL with no existing row, so re-analysing a job the user already moved
+// to Applied/Rejected never resets it. defaultStatus covers the same case on redeployed Apps
+// Scripts; sending both means a stale deployment still stamps Analysed instead of Pending.
+async function autoSaveAnalysis() {
+  if (!state.settings.sheetsWebhookUrl || !state.matcher.lastResult || !state.matcher.lastJobUrl) return;
+
+  const guard = evaluateSaveGuard(state.matcher.lastResult, state.matcher.lastJobText, state.settings);
+  if (guard.needsConfirm) {
+    setStatus("Analysis complete — waiting on your call before tracking it.", "ok");
+    const approved = await confirmSave(guard.reasons);
+    if (!approved) {
+      state.matcher.savedToSheets = false;
+      setStatus("Analysis complete — discarded, nothing written to the sheet.", "ok");
+      return;
+    }
+  }
 
   try {
-    await postToSheets(state.settings.sheetsWebhookUrl, payload);
-    window.dispatchEvent(new CustomEvent("tracker:refresh"));
+    const existing = await findSavedJobByUrl(state.matcher.lastJobUrl);
+    await postToSheets(state.settings.sheetsWebhookUrl, buildSheetPayload(!existing));
     state.matcher.savedToSheets = true;
-    await persistTabSessionState();
-    saveSheetsBtn.textContent = "✓ Saved to Google Sheets";
-    saveSheetsBtn.classList.add("saved");
-    setStatus("Sent to Google Sheets — check your sheet to confirm the row landed.", "ok");
+
+    const savedLabel = existing ? "Tracker row updated" : `Tracked as ${ANALYSED_STATUS}`;
+    setStatus(`Analysis complete — ${savedLabel}. Cache cleared, re-reading the sheet...`, "ok");
+
+    refreshTrackerFromSheet()
+      .then((items) => {
+        setStatus(`Analysis complete — ${savedLabel}. Cache cleared, sheet re-read, tracker updated (${items.length} jobs).`, "ok");
+      })
+      .catch((err) => {
+        console.error(err);
+        setStatus(`Analysis complete — ${savedLabel}. Tracker will reload the sheet next time you open it.`, "ok");
+      });
   } catch (err) {
     console.error(err);
-    saveSheetsBtn.textContent = "💾 Save to Google Sheets";
-    setStatus("Couldn't reach the Sheets webhook — check the URL in Settings.", "err");
-  } finally {
-    // refreshSaveSheetsButton() (not a hardcoded label) so the button stays correctly disabled
-    // and labeled "✓ Saved..." afterwards if savedToSheets is true, instead of reverting to a
-    // clickable state that would invite saving the same row again.
-    setTimeout(() => {
-      refreshSaveSheetsButton();
-    }, 2500);
+    state.matcher.savedToSheets = false;
+    setStatus("Analysis complete, but Google Sheets couldn't be reached — run it again to track this job.", "err");
   }
 }
 
-analyzeBtn.addEventListener("click", () => runAnalysis({ reextract: true }));
-reanalyzeBtn.addEventListener("click", () => runAnalysis({ reextract: false }));
-saveSheetsBtn.addEventListener("click", saveResultToSheets);
+analyzeBtn.addEventListener("click", () => runAnalysis());
 
 // Triggered by the "analyze-resume" keyboard shortcut (background.js) once the side panel is open.
 // Every tab's panel instance receives this message, so only act if it's tagged for THIS tab —
@@ -679,6 +680,6 @@ saveSheetsBtn.addEventListener("click", saveResultToSheets);
 // panel that happens to be open.
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "JOB_MATCH_SHORTCUT_ANALYZE" && message.tabId === state.tab.currentTabId) {
-    runAnalysis({ reextract: true });
+    runAnalysis();
   }
 });

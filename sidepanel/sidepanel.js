@@ -5,5 +5,6 @@ import "./features/coverLetter.js";
 import "./features/salary.js";
 import "./features/scan.js";
 import "./features/tracker.js";
+import "./features/kpi.js";
 
 init();

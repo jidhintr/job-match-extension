@@ -15,6 +15,15 @@ export function slugify(text, index) {
   return base ? `${base}-${index}` : `area-${index}`;
 }
 
+// Stored dateTime is "YYYY-MM-DD HH:mm:ss" captured from the saver's device clock in UTC
+// (new Date().toISOString()) — reinterpreting it as UTC and letting the browser convert back
+// reproduces the original click moment in whichever device's local time is viewing it.
+export function parseSheetDate(value) {
+  if (!value) return null;
+  const d = new Date(`${String(value).replace(" ", "T")}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function splitCsv(value) {
   return String(value || "")
     .split(",")

@@ -20,7 +20,11 @@ export const state = {
     customInstructions: { matcher: DEFAULT_MATCHER_INSTRUCTIONS, prep: "", coverLetter: "", salary: "", scan: "" },
     // Overwritten by init() (features/bootstrap.js) via sanitizeTrackerStatusOptions() —
     // see DEFAULT_TRACKER_STATUS_OPTIONS in features/tracker.js.
-    trackerStatusOptions: []
+    trackerStatusOptions: [],
+    cacheTtlHours: 2,
+    guardMinAts: 50,
+    guardMinChance: 40,
+    guardKeywords: ".net"
   },
   tab: {
     currentTabId: null,
@@ -51,8 +55,13 @@ export const state = {
     items: [],
     loaded: false,
     loading: false,
+    cachedAt: null,
     statusFilter: "All",
     searchQuery: "",
+    range: "30",
     sortBy: "date-desc"
+  },
+  kpi: {
+    range: "30"
   }
 };

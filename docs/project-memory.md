@@ -65,6 +65,37 @@ The preferred end state is:
 - The model fills a new required `score_factors: { ats, chance }` field (max 4 short items each), covered by the `BASE_OUTPUT_TOKENS` bump from 600 to 750.
 - `scoreFactors()` falls back to signals already in the report (missing skills, non-Low tech gap rows, weak areas, credibility gaps, forgettable, warnings) so results saved before this field — and sheet-reconstructed summaries — still explain their scores without a re-analysis.
 
+### KPI tab — phase 1 (sheet only)
+
+- New `kpi` tab, toggleable in Settings > Visible Tabs like every other tab. Files: `sidepanel/features/kpiMetrics.js` (pure math) and `sidepanel/features/kpi.js` (rendering).
+- Reads nothing but `state.tracker.items`. `ensureTrackerItems({ force })` in `tracker.js` is the shared UI-free loader that the Tracker tab, KPI tab and `findSavedJobByUrl()` all go through, so whoever needs the sheet first pays for the fetch. No AI calls anywhere in this tab.
+- Metrics: headline tiles (total, distinct companies, avg ATS, avg chance), pipeline by status, jobs saved per week/month, ATS and chance band spreads (0-49 / 50-75 / 76-100), top missing skills, most applied companies. Range filter is all time / 30 / 90 / 365 days.
+- Status order comes from `configuredStatuses()`, so renaming or adding a status in Settings reorders the funnel automatically. Statuses found in the sheet but no longer configured are appended, never dropped — those rows are still real applications.
+- Charts are hand-rolled divs. MV3 CSP forbids remote scripts, so do not add Chart.js or any CDN library here.
+- Known phase 1 limit, stated in the tab footnote: the sheet stores only the date a job was SAVED, never when its status changed, so nothing can measure time-in-stage.
+- Phase 2 (not built): cross-check against Gmail for real reply timestamps, stage-by-stage progression and contact people.
+
+### Auto-track on analyse
+
+- The matcher writes the row to Sheets itself the moment an analysis succeeds (`autoSaveAnalysis()` in `matcher.js`), so nothing analysed goes untracked even if the user walks away from a bad score.
+- `ANALYSED_STATUS` ("Analysed") in `tracker.js` is a reserved system status: always first in `enabledStatuses()`, has its own colour outside `STATUS_COLOR_PALETTE`, is stripped from any user-configured list by `sanitizeTrackerStatusOptions()` in both `tracker.js` and `options.js`, and does not count toward `MAX_TRACKER_STATUSES`.
+- The payload sends `status` only when the URL has no existing row, plus `defaultStatus` always. `handleJobUpsert()` applies `defaultStatus` on append only, so re-analysing a job the user already moved to Applied/Rejected refreshes its scores without resetting its status. Sending both means an un-redeployed Apps Script still stamps Analysed instead of falling back to Pending.
+- A failed auto-save never fails the analysis — the report stays on screen and `savedToSheets` resets so the next Analyze retries the write.
+- Any write to the sheet (analysis auto-save, scan save) fires `tracker:refresh`, which runs `refreshTrackerFromSheet()`: clear the persisted cache, drop the in-memory copy, refetch, re-render the Tracker, then fire `tracker:updated` so the KPI tab recomputes. It is never awaited by the analysis flow — the report renders first and the matcher status line updates when the refresh lands.
+- `warmTrackerCache()` runs at the end of `init()` so the Tracker tab has data on first open without a visible load.
+### Save guard
+
+`sidepanel/features/saveGuard.js` gates the auto-save behind a Save/Discard modal. Rules, in precedence order:
+
+1. `warnings.language_barrier` set → always ask, even at 95% with a keyword hit. The user can't work around a language requirement.
+2. A Settings keyword (default `.net`) found in the job text → save silently, scores ignored.
+3. Both `ats_score < guardMinAts` (50) and `chance_of_getting_job < guardMinChance` (40) → ask. Either score clearing its own threshold is enough to save silently.
+4. Otherwise save silently.
+
+`warnings.visa_sponsorship_concern` never blocks a save — it still renders as a warning chip, but the user handles relocation/sponsorship themselves. Discarding writes nothing and leaves `savedToSheets` false, so re-running Analyze offers the choice again.
+
+- The "Re-Analyze Match" and "Save to Google Sheets" buttons are gone. Analyze Current Page is the single entry point: first click on a known URL serves the free sheet summary, clicking again runs the full analysis, which is also how a re-uploaded resume is re-run.
+
 ## Future work checklist
 
 - tune model routing logic for each task type

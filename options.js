@@ -34,14 +34,40 @@ const tabVisCheckboxes = {
   matcher: document.getElementById("tabVisMatcher"),
   prep: document.getElementById("tabVisPrep"),
   apply: document.getElementById("tabVisApply"),
-  tracker: document.getElementById("tabVisTracker")
+  tracker: document.getElementById("tabVisTracker"),
+  kpi: document.getElementById("tabVisKpi")
 };
-const DEFAULT_VISIBLE_TABS = { scan: true, matcher: true, prep: true, apply: true, tracker: true };
+const DEFAULT_VISIBLE_TABS = { scan: true, matcher: true, prep: true, apply: true, tracker: true, kpi: true };
+
+const guardMinAtsInput = document.getElementById("guardMinAts");
+const guardMinChanceInput = document.getElementById("guardMinChance");
+const guardKeywordsInput = document.getElementById("guardKeywords");
+const saveGuardSettingsBtn = document.getElementById("saveGuardSettingsBtn");
+const guardStatus = document.getElementById("guardStatus");
+
+function sanitizeThreshold(value, fallback) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(100, Math.max(0, n));
+}
+
+const cacheTtlInput = document.getElementById("cacheTtlHours");
+const saveCacheTtlBtn = document.getElementById("saveCacheTtlBtn");
+const clearCacheBtn = document.getElementById("clearCacheBtn");
+const cacheTtlStatus = document.getElementById("cacheTtlStatus");
+const DEFAULT_CACHE_TTL_HOURS = 2;
+
+function sanitizeCacheTtlHours(value) {
+  const hours = Math.round(Number(value));
+  if (!Number.isFinite(hours)) return DEFAULT_CACHE_TTL_HOURS;
+  return Math.min(24, Math.max(1, hours));
+}
 
 const trackerStatusOptionsStatus = document.getElementById("trackerStatusOptionsStatus");
 const trackerStatusRows = document.getElementById("trackerStatusRows");
 const addTrackerStatusBtn = document.getElementById("addTrackerStatusBtn");
 const MAX_TRACKER_STATUSES = 5;
+const ANALYSED_STATUS = "Analysed";
 const DEFAULT_TRACKER_STATUS_OPTIONS = [
   { label: "New", enabled: true },
   { label: "Pending", enabled: true },
@@ -54,6 +80,7 @@ function sanitizeTrackerStatusOptions(saved) {
   if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
   const cleaned = saved
     .filter((s) => s && typeof s.label === "string" && s.label.trim())
+    .filter((s) => s.label.trim().toLowerCase() !== ANALYSED_STATUS.toLowerCase())
     .slice(0, MAX_TRACKER_STATUSES)
     .map((s) => ({ label: s.label.trim(), enabled: s.enabled !== false }));
   return cleaned.length > 0 ? cleaned : DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
@@ -94,6 +121,11 @@ function renderTrackerStatusRows() {
       const value = textInput.value.trim();
       if (!value) {
         textInput.value = trackerStatusOptions[i].label;
+        return;
+      }
+      if (value.toLowerCase() === ANALYSED_STATUS.toLowerCase()) {
+        textInput.value = trackerStatusOptions[i].label;
+        flashStatus(trackerStatusOptionsStatus, `"${ANALYSED_STATUS}" is reserved and always available.`, "err");
         return;
       }
       trackerStatusOptions[i].label = value;
@@ -317,8 +349,16 @@ async function loadSavedValues() {
     "visibleTabs",
     "resumeSectionOrder",
     "customInstructions",
-    "trackerStatusOptions"
+    "trackerStatusOptions",
+    "cacheTtlHours",
+    "guardMinAts",
+    "guardMinChance",
+    "guardKeywords"
   ]);
+  cacheTtlInput.value = String(sanitizeCacheTtlHours(stored.cacheTtlHours));
+  guardMinAtsInput.value = String(sanitizeThreshold(stored.guardMinAts, 50));
+  guardMinChanceInput.value = String(sanitizeThreshold(stored.guardMinChance, 40));
+  guardKeywordsInput.value = stored.guardKeywords === undefined ? ".net" : stored.guardKeywords;
   if (stored.geminiApiKey) apiKeyInput.value = stored.geminiApiKey;
 
   resumeSectionOrder = sanitizeSectionOrder(stored.resumeSectionOrder);
@@ -428,6 +468,27 @@ Object.entries(tabVisCheckboxes).forEach(([key, checkbox]) => {
     await chrome.storage.local.set({ visibleTabs });
     flashStatus(tabVisibilityStatus, "Saved ✓", "ok");
   });
+});
+
+saveGuardSettingsBtn.addEventListener("click", async () => {
+  const guardMinAts = sanitizeThreshold(guardMinAtsInput.value, 50);
+  const guardMinChance = sanitizeThreshold(guardMinChanceInput.value, 40);
+  guardMinAtsInput.value = String(guardMinAts);
+  guardMinChanceInput.value = String(guardMinChance);
+  await chrome.storage.local.set({ guardMinAts, guardMinChance, guardKeywords: guardKeywordsInput.value.trim() });
+  flashStatus(guardStatus, "Saved ✓", "ok");
+});
+
+saveCacheTtlBtn.addEventListener("click", async () => {
+  const hours = sanitizeCacheTtlHours(cacheTtlInput.value);
+  cacheTtlInput.value = String(hours);
+  await chrome.storage.local.set({ cacheTtlHours: hours });
+  flashStatus(cacheTtlStatus, `Saved ✓ — cache lasts ${hours}h`, "ok");
+});
+
+clearCacheBtn.addEventListener("click", async () => {
+  await chrome.storage.local.remove("trackerCache");
+  flashStatus(cacheTtlStatus, "Cache cleared — next view refetches.", "ok");
 });
 
 Object.entries(instrSaveButtons).forEach(([key, btn]) => {

@@ -21,6 +21,7 @@
       <button class="tab-btn" id="tabBtnPrep" data-tab="prep" type="button">Interview Prep</button>
       <button class="tab-btn" id="tabBtnApply" data-tab="apply" type="button">Cover Letter &amp; Salary</button>
       <button class="tab-btn" id="tabBtnTracker" data-tab="tracker" type="button">Tracker</button>
+      <button class="tab-btn" id="tabBtnKpi" data-tab="kpi" type="button">KPI</button>
     </div>
 
     <div id="setupBanner" class="setup-banner hidden">
@@ -123,12 +124,7 @@
       
       <section class="actions-row">
         <button id="analyzeBtn" class="primary-btn" disabled>Analyze Current Page</button>
-        <button id="reanalyzeBtn" class="secondary-btn" disabled>Re-Analyze Match</button>
-      </section>
-
-      <section class="actions-row">
         <button id="uploadResumeBtn" class="secondary-btn" title="Use a PDF/Word resume for this job only">📄 Upload Resume</button>
-        <button id="saveSheetsBtn" class="secondary-btn" disabled>💾 Save to Google Sheets</button>
       </section>
       <input type="file" id="resumeFileInput" accept=".pdf,.docx" class="hidden" />
 
@@ -399,6 +395,11 @@
             <option value="Applied">Applied</option>
             <option value="Rejected">Rejected</option>
           </select>
+          <select id="trackerRangeSelect" class="tracker-select">
+            <option value="30">Last 30 days</option>
+            <option value="10">Last 10 days</option>
+            <option value="1">Last 24 hours</option>
+          </select>
           <select id="trackerSortSelect" class="tracker-select">
             <option value="date-desc">Newest first</option>
             <option value="date-asc">Oldest first</option>
@@ -415,7 +416,39 @@
           <p>No tracked jobs yet. Save a job match or scan result to see it here.</p>
         </div>
       </div>
+
+      <div id="kpiView" class="tab-view hidden">
+        <div class="tracker-toolbar">
+          <select id="kpiRangeSelect" class="tracker-select">
+            <option value="7">Last week</option>
+            <option value="14">Last 2 weeks</option>
+            <option value="30">Last month</option>
+            <option value="60">Last 2 months</option>
+            <option value="90">Last 3 months</option>
+          </select>
+          <button id="kpiGmailBtn" class="secondary-btn kpi-gmail-btn" type="button" title="Cross-check these jobs against Gmail">📬 Gmail</button>
+          <button id="refreshKpiBtn" class="icon-btn" type="button" title="Refresh from Google Sheets">⟳</button>
+        </div>
+        <div id="kpiStatusLine" class="status-line"></div>
+        <div id="kpiBody"></div>
+        <div id="kpiEmptyState" class="empty-state hidden">
+          <div class="empty-icon">📊</div>
+          <p>No tracked jobs yet. Save a job match or scan result to see your KPIs here.</p>
+        </div>
+      </div>
     </main>
+  </div>
+
+  <div id="saveGuardModal" class="modal-backdrop hidden">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="saveGuardTitle">
+      <div class="modal-title" id="saveGuardTitle">⚠️ Save this to the tracker?</div>
+      <p class="modal-body">This job looks weak. Saving it will add a row to your Google Sheet.</p>
+      <ul id="saveGuardReasons" class="modal-reasons"></ul>
+      <div class="modal-actions">
+        <button id="saveGuardDiscardBtn" class="secondary-btn" type="button">Discard</button>
+        <button id="saveGuardConfirmBtn" class="primary-btn" type="button">Save anyway</button>
+      </div>
+    </div>
   </div>
 
   <script src="../lib/jspdf/jspdf.umd.min.js"></script>

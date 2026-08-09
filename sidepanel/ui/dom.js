@@ -3,8 +3,6 @@ export const setupBannerBtn = document.getElementById("setupBannerBtn");
 export const openOptionsBtn = document.getElementById("openOptions");
 
 export const analyzeBtn = document.getElementById("analyzeBtn");
-export const reanalyzeBtn = document.getElementById("reanalyzeBtn");
-export const saveSheetsBtn = document.getElementById("saveSheetsBtn");
 export const uploadResumeBtn = document.getElementById("uploadResumeBtn");
 export const resumeFileInput = document.getElementById("resumeFileInput");
 export const resumeSourceLine = document.getElementById("resumeSourceLine");
@@ -18,6 +16,11 @@ export const drawerChevron = document.getElementById("drawerChevron");
 export const resumeQuickEdit = document.getElementById("resumeQuickEdit");
 export const saveResumeQuickBtn = document.getElementById("saveResumeQuick");
 export const resumeSavedTag = document.getElementById("resumeSavedTag");
+
+export const saveGuardModal = document.getElementById("saveGuardModal");
+export const saveGuardReasons = document.getElementById("saveGuardReasons");
+export const saveGuardConfirmBtn = document.getElementById("saveGuardConfirmBtn");
+export const saveGuardDiscardBtn = document.getElementById("saveGuardDiscardBtn");
 
 export const dashboard = document.getElementById("dashboard");
 export const glitterLayer = document.getElementById("glitterLayer");
@@ -54,7 +57,8 @@ export const prepView = document.getElementById("prepView");
 export const applyView = document.getElementById("applyView");
 export const scanView = document.getElementById("scanView");
 export const trackerView = document.getElementById("trackerView");
-export const tabViewsByName = { matcher: matcherView, prep: prepView, apply: applyView, scan: scanView, tracker: trackerView };
+export const kpiView = document.getElementById("kpiView");
+export const tabViewsByName = { matcher: matcherView, prep: prepView, apply: applyView, scan: scanView, tracker: trackerView, kpi: kpiView };
 export const tabButtonsByName = {};
 tabButtons.forEach((btn) => { tabButtonsByName[btn.dataset.tab] = btn; });
 export const coverLetterBtn = document.getElementById("coverLetterBtn");
@@ -69,11 +73,19 @@ export const scanResultsList = document.getElementById("scanResultsList");
 
 export const trackerSearchInput = document.getElementById("trackerSearchInput");
 export const trackerStatusFilter = document.getElementById("trackerStatusFilter");
+export const trackerRangeSelect = document.getElementById("trackerRangeSelect");
 export const trackerSortSelect = document.getElementById("trackerSortSelect");
 export const refreshTrackerBtn = document.getElementById("refreshTrackerBtn");
 export const trackerStatusLine = document.getElementById("trackerStatusLine");
 export const trackerList = document.getElementById("trackerList");
 export const trackerEmptyState = document.getElementById("trackerEmptyState");
+
+export const kpiRangeSelect = document.getElementById("kpiRangeSelect");
+export const refreshKpiBtn = document.getElementById("refreshKpiBtn");
+export const kpiGmailBtn = document.getElementById("kpiGmailBtn");
+export const kpiStatusLine = document.getElementById("kpiStatusLine");
+export const kpiBody = document.getElementById("kpiBody");
+export const kpiEmptyState = document.getElementById("kpiEmptyState");
 
 export const generatePrepBtn = document.getElementById("generatePrepBtn");
 export const prepStatusLine = document.getElementById("prepStatusLine");

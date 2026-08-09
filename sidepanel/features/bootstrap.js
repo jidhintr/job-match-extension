@@ -12,8 +12,6 @@ import {
   setupBannerBtn,
   openOptionsBtn,
   analyzeBtn,
-  reanalyzeBtn,
-  saveSheetsBtn,
   uploadResumeBtn,
   resumeFileInput,
   resumeSourceLine,
@@ -38,7 +36,10 @@ import {
 } from "../ui/dom.js";
 import { createStatusLine } from "../ui/statusLine.js";
 import { renderReport, sanitizeSectionOrder, applySectionVisibilityAndOrder, buildResultFromSheetItem } from "./matcher.js";
-import { loadTrackerIfNeeded, refreshTrackerStatusOptions, sanitizeTrackerStatusOptions, findSavedJobByUrl } from "./tracker.js";
+import { loadTrackerIfNeeded, refreshTrackerStatusOptions, sanitizeTrackerStatusOptions, findSavedJobByUrl, warmTrackerCache } from "./tracker.js";
+import { refreshKpiTab, refreshKpiStatusOptions } from "./kpi.js";
+import { sanitizeCacheTtlHours } from "../services/trackerCache.js";
+import { sanitizeThreshold, DEFAULT_GUARD_MIN_ATS, DEFAULT_GUARD_MIN_CHANCE, DEFAULT_GUARD_KEYWORDS } from "./saveGuard.js";
 
 export function effectiveResume() {
   return state.tab.resumeOverride || state.settings.masterResume;
@@ -90,7 +91,6 @@ async function restoreTabState() {
   if (state.matcher.lastResult) {
     renderReport(state.matcher.lastResult);
     setStatus("Restored previous analysis for this tab.", "ok");
-    reanalyzeBtn.disabled = !state.matcher.lastJobText;
   } else {
     // No session-cached analysis for this tab — e.g. the side panel or the tab itself was closed
     // and reopened, which gives this document a fresh tabId with nothing in session storage even
@@ -98,7 +98,6 @@ async function restoreTabState() {
     // on a job that's already saved (from this device or another), check the sheet by URL.
     await tryLoadSavedAnalysisForCurrentTab();
   }
-  refreshSaveSheetsButton();
   refreshApplyButtons();
 }
 
@@ -174,6 +173,10 @@ export async function init() {
   if (stored.customInstructions) {
     state.settings.customInstructions = { ...state.settings.customInstructions, ...stored.customInstructions };
   }
+  state.settings.cacheTtlHours = sanitizeCacheTtlHours(stored.cacheTtlHours);
+  state.settings.guardMinAts = sanitizeThreshold(stored.guardMinAts, DEFAULT_GUARD_MIN_ATS);
+  state.settings.guardMinChance = sanitizeThreshold(stored.guardMinChance, DEFAULT_GUARD_MIN_CHANCE);
+  state.settings.guardKeywords = stored.guardKeywords === undefined ? DEFAULT_GUARD_KEYWORDS : stored.guardKeywords;
   state.settings.trackerStatusOptions = sanitizeTrackerStatusOptions(stored.trackerStatusOptions);
   refreshTrackerStatusOptions();
   resumeQuickEdit.value = state.settings.masterResume;
@@ -185,8 +188,8 @@ export async function init() {
 
   await restoreTabState();
   refreshSetupBanner();
-  refreshSaveSheetsButton();
   refreshSourcePicker();
+  warmTrackerCache();
 }
 
 function refreshSourcePicker() {
@@ -235,28 +238,6 @@ function refreshResumeSourceLine() {
   }
 }
 
-export function refreshSaveSheetsButton() {
-  saveSheetsBtn.classList.remove("saved");
-  if (!state.settings.sheetsWebhookUrl) {
-    saveSheetsBtn.disabled = true;
-    saveSheetsBtn.textContent = "💾 Save to Google Sheets";
-    saveSheetsBtn.title = "Add a Google Sheets Webhook URL in Settings first.";
-  } else if (!state.matcher.lastResult) {
-    saveSheetsBtn.disabled = true;
-    saveSheetsBtn.textContent = "💾 Save to Google Sheets";
-    saveSheetsBtn.title = "Run an analysis first.";
-  } else if (state.matcher.savedToSheets) {
-    saveSheetsBtn.disabled = true;
-    saveSheetsBtn.classList.add("saved");
-    saveSheetsBtn.textContent = "✓ Saved to Google Sheets";
-    saveSheetsBtn.title = "Already saved to Google Sheets.";
-  } else {
-    saveSheetsBtn.disabled = false;
-    saveSheetsBtn.textContent = "💾 Save to Google Sheets";
-    saveSheetsBtn.title = "";
-  }
-}
-
 openOptionsBtn.addEventListener("click", () => chrome.runtime.openOptionsPage());
 setupBannerBtn.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
@@ -266,14 +247,19 @@ function activateTab(target) {
   if (target === "apply") refreshApplyButtons();
   if (target === "scan") refreshScanButton();
   if (target === "tracker") loadTrackerIfNeeded();
+  if (target === "kpi") refreshKpiTab();
 }
 
 tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => activateTab(btn.dataset.tab));
 });
 
+window.addEventListener("app:navigate", (e) => {
+  if (e.detail?.tab) activateTab(e.detail.tab);
+});
+
 function applyTabVisibility(visibleTabs) {
-  const visible = { scan: true, matcher: true, prep: true, apply: true, tracker: true, ...(visibleTabs || {}) };
+  const visible = { scan: true, matcher: true, prep: true, apply: true, tracker: true, kpi: true, ...(visibleTabs || {}) };
   const anyVisible = Object.values(visible).some(Boolean);
 
   Object.entries(tabButtonsByName).forEach(([name, btn]) => {
@@ -316,6 +302,14 @@ onSettingsChanged((changes) => {
   if (changes.perplexityKey) state.settings.perplexityKey = changes.perplexityKey.newValue || "";
   if (changes.perplexityModel) state.settings.perplexityModel = changes.perplexityModel.newValue || "sonar";
   if (changes.visibleTabs) applyTabVisibility(changes.visibleTabs.newValue);
+  if (changes.cacheTtlHours) state.settings.cacheTtlHours = sanitizeCacheTtlHours(changes.cacheTtlHours.newValue);
+  if (changes.guardMinAts) state.settings.guardMinAts = sanitizeThreshold(changes.guardMinAts.newValue, DEFAULT_GUARD_MIN_ATS);
+  if (changes.guardMinChance) state.settings.guardMinChance = sanitizeThreshold(changes.guardMinChance.newValue, DEFAULT_GUARD_MIN_CHANCE);
+  if (changes.guardKeywords) state.settings.guardKeywords = changes.guardKeywords.newValue || "";
+  if (changes.trackerCache && !changes.trackerCache.newValue) {
+    state.tracker.loaded = false;
+    state.tracker.cachedAt = null;
+  }
   if (changes.resumeSectionOrder) {
     state.settings.resumeSectionOrder = sanitizeSectionOrder(changes.resumeSectionOrder.newValue);
     applySectionVisibilityAndOrder();
@@ -326,9 +320,9 @@ onSettingsChanged((changes) => {
   if (changes.trackerStatusOptions) {
     state.settings.trackerStatusOptions = sanitizeTrackerStatusOptions(changes.trackerStatusOptions.newValue);
     refreshTrackerStatusOptions();
+    refreshKpiStatusOptions();
   }
   refreshSetupBanner();
-  refreshSaveSheetsButton();
   refreshSourcePicker();
 });
 

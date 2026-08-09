@@ -29,7 +29,11 @@ export async function getSettings() {
     "visibleTabs",
     "resumeSectionOrder",
     "customInstructions",
-    "trackerStatusOptions"
+    "trackerStatusOptions",
+    "cacheTtlHours",
+    "guardMinAts",
+    "guardMinChance",
+    "guardKeywords"
   ]);
 }
 

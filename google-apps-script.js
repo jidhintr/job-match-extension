@@ -96,6 +96,11 @@ function handleJobUpsert(data) {
     return { status: "error", message: "Job URL is required." };
   }
 
+  // status forces a value on both append and update. defaultStatus only applies when appending a
+  // brand new row, so the matcher's auto-save can stamp "Analysed" on first sight of a job without
+  // ever resetting a row the user has since moved to Applied/Rejected.
+  const appendStatus = data.status || data.defaultStatus || STATUS_DEFAULT;
+
   const rowValues = [
     jobUrl,                                                 // Col A: Job URL
     formatDateCell(data.dateTime || data.date),            // Col B: DateTime
@@ -106,7 +111,7 @@ function handleJobUpsert(data) {
     data.missingSkills || "",                              // Col G: Missing Skills
     data.addSkills || data.skillsToAdd || "",              // Col H: Skills to Add
     data.removeSkills || data.skillsToRemove || "",        // Col I: Skills to Remove
-    data.status ? String(data.status).trim() : STATUS_DEFAULT // Col J: Status — any label the extension's Settings defines
+    String(appendStatus).trim()                            // Col J: Status — any label the extension's Settings defines
   ];
 
   const rowIndex = findRowByJobUrl(sheet, jobUrl);

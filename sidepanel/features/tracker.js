@@ -1,10 +1,13 @@
 import { state } from "../state/store.js";
 import { fetchFromSheets, postToSheets } from "../services/sheetsSync.js";
 import { createStatusLine } from "../ui/statusLine.js";
-import { splitCsv } from "../ui/format.js";
+import { splitCsv, parseSheetDate } from "../ui/format.js";
+import { withinRange } from "./kpiMetrics.js";
+import { readTrackerCache, writeTrackerCache, clearTrackerCache, isCacheFresh, cacheAgeLabel } from "../services/trackerCache.js";
 import {
   trackerSearchInput,
   trackerStatusFilter,
+  trackerRangeSelect,
   trackerSortSelect,
   refreshTrackerBtn,
   trackerStatusLine,
@@ -25,6 +28,12 @@ export const DEFAULT_TRACKER_STATUS_OPTIONS = [
   { label: "Rejected", enabled: true }
 ];
 
+// Reserved system status. The matcher stamps it on every row it auto-saves the moment an analysis
+// finishes, so it must always be filterable and selectable regardless of what the user configured
+// in Settings — it is deliberately not part of the editable list and doesn't count toward the max.
+export const ANALYSED_STATUS = "Analysed";
+const ANALYSED_STATUS_COLOR = "#ec4899";
+
 // Colors are assigned by position in the configured list, not by name — that's what lets a
 // renamed status ("Open" instead of "New") keep a stable, distinguishing color.
 const STATUS_COLOR_PALETTE = ["#4c8dff", "#d99a3d", "#34c07b", "#e5484d", "#8b5cf6"];
@@ -34,20 +43,22 @@ export function sanitizeTrackerStatusOptions(saved) {
   if (!Array.isArray(saved) || saved.length === 0) return DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
   const cleaned = saved
     .filter((s) => s && typeof s.label === "string" && s.label.trim())
+    .filter((s) => s.label.trim().toLowerCase() !== ANALYSED_STATUS.toLowerCase())
     .slice(0, MAX_TRACKER_STATUSES)
     .map((s) => ({ label: s.label.trim(), enabled: s.enabled !== false }));
   return cleaned.length > 0 ? cleaned : DEFAULT_TRACKER_STATUS_OPTIONS.map((s) => ({ ...s }));
 }
 
-function configuredStatuses() {
+export function configuredStatuses() {
   return state.settings.trackerStatusOptions && state.settings.trackerStatusOptions.length > 0
     ? state.settings.trackerStatusOptions
     : DEFAULT_TRACKER_STATUS_OPTIONS;
 }
 
-function enabledStatuses() {
+export function enabledStatuses() {
   const enabled = configuredStatuses().filter((s) => s.enabled).map((s) => s.label);
-  return enabled.length > 0 ? enabled : configuredStatuses().map((s) => s.label);
+  const base = enabled.length > 0 ? enabled : configuredStatuses().map((s) => s.label);
+  return [ANALYSED_STATUS, ...base.filter((s) => s !== ANALYSED_STATUS)];
 }
 
 // A card's own current status must always be selectable even if the user later disabled or
@@ -57,7 +68,8 @@ function statusOptionsForItem(currentStatus) {
   return enabled.includes(currentStatus) ? enabled : [...enabled, currentStatus];
 }
 
-function colorForStatus(label) {
+export function colorForStatus(label) {
+  if (label === ANALYSED_STATUS) return ANALYSED_STATUS_COLOR;
   const idx = configuredStatuses().findIndex((s) => s.label === label);
   return idx >= 0 ? STATUS_COLOR_PALETTE[idx % STATUS_COLOR_PALETTE.length] : UNKNOWN_STATUS_COLOR;
 }
@@ -72,6 +84,8 @@ function applyStatusColor(item, selectEl, cardEl) {
   selectEl.style.backgroundColor = hexToRgba(color, 0.2);
   selectEl.style.color = color;
   cardEl.style.setProperty("--rb-accent", color);
+  cardEl.style.setProperty("--rb-bg", hexToRgba(color, 0.09));
+  cardEl.style.setProperty("--rb-border", hexToRgba(color, 0.3));
 }
 
 function renderStatusFilterOptions() {
@@ -102,80 +116,107 @@ export function refreshTrackerStatusOptions() {
 }
 
 window.addEventListener("tracker:refresh", () => {
-  if (!state.tracker.loading) {
-    loadTrackerData({ force: true });
-  }
+  refreshTrackerFromSheet().catch((err) => {
+    console.error(err);
+    setTrackerStatus(err.message || "Could not refresh from Sheets.", "err");
+  });
 });
 
-// Stored dateTime is "YYYY-MM-DD HH:mm:ss" captured from the saver's device clock in UTC
-// (new Date().toISOString()) — reinterpreting it as UTC and letting toLocaleString() convert
-// back reproduces the original click moment in whichever device's local time is viewing it.
+export async function refreshTrackerFromSheet() {
+  if (state.tracker.loading) return state.tracker.items;
+
+  await clearTrackerCache();
+  state.tracker.loaded = false;
+  state.tracker.cachedAt = null;
+
+  const items = await ensureTrackerItems({ force: true });
+  renderTrackerList();
+  window.dispatchEvent(new CustomEvent("tracker:updated", { detail: { count: items.length } }));
+  return items;
+}
+
+export function warmTrackerCache() {
+  if (!state.settings.sheetsWebhookUrl || state.tracker.loaded) return;
+  ensureTrackerItems().then(renderTrackerList).catch((err) => console.error("Tracker cache warm-up failed.", err));
+}
+
 function formatDateTime(value) {
-  if (!value) return "—";
-  const asUtc = `${String(value).replace(" ", "T")}Z`;
-  const d = new Date(asUtc);
-  if (Number.isNaN(d.getTime())) return String(value);
+  const d = parseSheetDate(value);
+  if (!d) return value ? String(value) : "—";
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 // GET is a plain fetch against the Apps Script webhook — application logic only, never an AI call.
 async function loadTrackerData({ force = false } = {}) {
-  if (!state.settings.sheetsWebhookUrl) {
-    setTrackerStatus("Add a Google Sheets Webhook URL in Settings first.", "err");
-    return;
-  }
   if (state.tracker.loading) return;
   if (state.tracker.loaded && !force) {
     renderTrackerList();
     return;
   }
 
-  state.tracker.loading = true;
   refreshTrackerBtn.disabled = true;
-  setTrackerStatus("Loading from Google Sheets...");
+  if (force) setTrackerStatus("Refreshing from Google Sheets...");
 
   try {
-    const items = await fetchFromSheets(state.settings.sheetsWebhookUrl);
-    state.tracker.items = items;
-    state.tracker.loaded = true;
+    await ensureTrackerItems({ force });
     renderTrackerList();
-    setTrackerStatus(`Loaded ${items.length} tracked job${items.length === 1 ? "" : "s"}.`, "ok");
   } catch (err) {
     console.error(err);
     setTrackerStatus(err.message || "Could not load from Sheets.", "err");
   } finally {
-    state.tracker.loading = false;
     refreshTrackerBtn.disabled = false;
   }
 }
 
-// Called on first tab activation only — cached data renders instantly on later visits,
-// the explicit Refresh button is the only thing that re-fetches.
+// Renders instantly from whatever is already cached. The sheet is only re-read when the cache has
+// expired, the Refresh button is pressed, or an analysis/scan save invalidates it.
 export function loadTrackerIfNeeded() {
   loadTrackerData({ force: false });
 }
 
-// Used by matcher.js/bootstrap.js to check whether a job was already analyzed and saved (from
-// this device or another one) before spending any Gemini tokens on it again. Shares the same
-// state.tracker.items cache as the Tracker tab — if that tab already loaded the list this reuses
-// it with zero extra requests, and if this runs first, the Tracker tab later reuses this fetch.
-// Deliberately skips the Tracker-tab-only UI updates (status line, refresh button) below.
-export async function findSavedJobByUrl(jobUrl) {
-  if (!jobUrl || !state.settings.sheetsWebhookUrl) return null;
-  if (!state.tracker.loaded) {
-    if (state.tracker.loading) return null; // an in-flight load will populate items shortly — don't duplicate it
-    try {
-      state.tracker.loading = true;
-      state.tracker.items = await fetchFromSheets(state.settings.sheetsWebhookUrl);
+export async function ensureTrackerItems({ force = false } = {}) {
+  if (state.tracker.loaded && !force) return state.tracker.items;
+  if (state.tracker.loading) return state.tracker.items;
+
+  if (!force) {
+    const cache = await readTrackerCache();
+    if (isCacheFresh(cache, state.settings.cacheTtlHours)) {
+      state.tracker.items = cache.items;
+      state.tracker.cachedAt = cache.savedAt;
       state.tracker.loaded = true;
-    } catch (err) {
-      console.error("Could not check Sheets for an existing analysis.", err);
-      return null;
-    } finally {
-      state.tracker.loading = false;
+      return state.tracker.items;
     }
   }
-  return state.tracker.items.find((it) => it.jobUrl === jobUrl) || null;
+
+  if (!state.settings.sheetsWebhookUrl) throw new Error("Add a Google Sheets Webhook URL in Settings first.");
+
+  try {
+    state.tracker.loading = true;
+    state.tracker.items = await fetchFromSheets(state.settings.sheetsWebhookUrl);
+    state.tracker.cachedAt = await writeTrackerCache(state.tracker.items);
+    state.tracker.loaded = true;
+  } finally {
+    state.tracker.loading = false;
+  }
+  return state.tracker.items;
+}
+
+export function trackerSourceLabel() {
+  if (!state.tracker.cachedAt) return "";
+  return ` Cached ${cacheAgeLabel(state.tracker.cachedAt)}.`;
+}
+
+// Used by matcher.js/bootstrap.js to check whether a job was already analyzed and saved (from
+// this device or another one) before spending any Gemini tokens on it again.
+export async function findSavedJobByUrl(jobUrl) {
+  if (!jobUrl || !state.settings.sheetsWebhookUrl) return null;
+  try {
+    const items = await ensureTrackerItems();
+    return items.find((it) => it.jobUrl === jobUrl) || null;
+  } catch (err) {
+    console.error("Could not check Sheets for an existing analysis.", err);
+    return null;
+  }
 }
 
 function sortItems(items) {
@@ -195,6 +236,7 @@ function filteredSortedItems() {
   const query = state.tracker.searchQuery.trim().toLowerCase();
   const filtered = state.tracker.items.filter(
     (it) =>
+      withinRange(it, state.tracker.range) &&
       (state.tracker.statusFilter === "All" || (it.status || "Pending") === state.tracker.statusFilter) &&
       matchesSearch(it, query)
   );
@@ -211,6 +253,7 @@ async function changeStatus(item, newStatus, selectEl, cardEl) {
       jobUrl: item.jobUrl,
       status: newStatus
     });
+    await writeTrackerCache(state.tracker.items, state.tracker.cachedAt || Date.now());
     setTrackerStatus(`Status updated to ${newStatus}.`, "ok");
   } catch (err) {
     console.error(err);
@@ -299,12 +342,26 @@ function buildCard(item) {
   return card;
 }
 
+function renderTrackerCount(shown, total) {
+  if (total === 0) {
+    setTrackerStatus("");
+    return;
+  }
+  const label = shown < total
+    ? `${shown}/${total} jobs match`
+    : `${total} tracked job${total === 1 ? "" : "s"}`;
+  setTrackerStatus(`${label}.${trackerSourceLabel()}`, "ok");
+}
+
 function renderTrackerList() {
   const items = filteredSortedItems();
-  trackerList.innerHTML = "";
-  trackerEmptyState.classList.toggle("hidden", state.tracker.items.length > 0);
+  const total = state.tracker.items.length;
 
-  if (state.tracker.items.length > 0 && items.length === 0) {
+  trackerList.innerHTML = "";
+  trackerEmptyState.classList.toggle("hidden", total > 0);
+  renderTrackerCount(items.length, total);
+
+  if (total > 0 && items.length === 0) {
     const none = document.createElement("p");
     none.className = "tracker-no-match";
     none.textContent = "No jobs match this filter.";
@@ -315,6 +372,26 @@ function renderTrackerList() {
   items.forEach((item) => trackerList.appendChild(buildCard(item)));
 }
 
+window.addEventListener("app:navigate", (e) => {
+  if (e.detail?.tab !== "tracker") return;
+
+  const status = e.detail.status || "All";
+  if (![...trackerStatusFilter.options].some((o) => o.value === status)) {
+    const opt = document.createElement("option");
+    opt.value = status;
+    opt.textContent = status;
+    trackerStatusFilter.appendChild(opt);
+  }
+
+  state.tracker.statusFilter = status;
+  state.tracker.searchQuery = e.detail.search || "";
+  state.tracker.range = trackerRangeSelect.options[0].value;
+  trackerStatusFilter.value = status;
+  trackerSearchInput.value = state.tracker.searchQuery;
+  trackerRangeSelect.value = state.tracker.range;
+  renderTrackerList();
+});
+
 trackerSearchInput.addEventListener("input", () => {
   state.tracker.searchQuery = trackerSearchInput.value;
   renderTrackerList();
@@ -322,6 +399,11 @@ trackerSearchInput.addEventListener("input", () => {
 
 trackerStatusFilter.addEventListener("change", () => {
   state.tracker.statusFilter = trackerStatusFilter.value;
+  renderTrackerList();
+});
+
+trackerRangeSelect.addEventListener("change", () => {
+  state.tracker.range = trackerRangeSelect.value;
   renderTrackerList();
 });
 
