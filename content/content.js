@@ -1,27 +1,25 @@
-
-
 (function extractAndSendJobText() {
   const CANDIDATE_SELECTORS = [
-    
+
     ".jobs-description__content",
     ".jobs-description-content__text",
     ".jobs-box__html-content",
-    
+
     "#jobDescriptionText",
     ".jobsearch-jobDescriptionText",
-    
+
     '[data-test="jobDescription"]',
     ".JobDetails_jobDescription__uW_fK",
-    
+
     ".posting-requirements",
     ".posting-description",
-    
+
     "#content",
     ".app-body",
     "#job-application-container",
-    
+
     '[data-automation-id="jobPostingDescription"]',
-    
+
     "article",
     "main"
   ];
@@ -39,10 +37,6 @@
     ".posting-headline .company-name"
   ];
 
-  
-  
-  
-  
   const STRIP_SELECTORS = [
     "script", "style", "noscript", "svg", "iframe", "template",
     "nav", "header", "footer", "form",
@@ -52,8 +46,6 @@
     '[class*="related-jobs" i]', '[class*="similar-jobs" i]', '[class*="share" i]'
   ].join(",");
 
-  
-  
   const MAX_CHARS = 15000;
 
   function isUsableText(text) {
@@ -64,10 +56,6 @@
     const clone = root.cloneNode(true);
     clone.querySelectorAll(STRIP_SELECTORS).forEach((el) => el.remove());
 
-    
-    
-    
-    
     clone.style.position = "fixed";
     clone.style.top = "-99999px";
     clone.style.left = "-99999px";
@@ -88,14 +76,11 @@
         return cleaned.slice(0, MAX_CHARS);
       }
     }
-    
+
     if (!document.body) return "";
     return cleanElementText(document.body).slice(0, MAX_CHARS);
   }
 
-  
-  
-  
   function extractCompanyGuess() {
     for (const selector of COMPANY_SELECTORS) {
       const text = document.querySelector(selector)?.textContent?.trim();

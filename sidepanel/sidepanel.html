@@ -5,7 +5,7 @@
   <title>MatchResumer</title>
   <link rel="stylesheet" href="sidepanel.css" />
 </head>
-<body>
+<body tabindex="-1">
   <div class="app">
     <header class="topbar">
       <div class="brand">
@@ -16,8 +16,8 @@
     </header>
 
     <div class="tab-switcher">
-      <button class="tab-btn active" id="tabBtnScan" data-tab="scan" type="button">Scan Jobs</button>
-      <button class="tab-btn" id="tabBtnMatcher" data-tab="matcher" type="button">Resume Matcher</button>
+      <button class="tab-btn" id="tabBtnScan" data-tab="scan" type="button">Scan Jobs</button>
+      <button class="tab-btn active" id="tabBtnMatcher" data-tab="matcher" type="button">Matcher</button>
       <button class="tab-btn" id="tabBtnPrep" data-tab="prep" type="button">Interview Prep</button>
       <button class="tab-btn" id="tabBtnApply" data-tab="apply" type="button">Cover Letter &amp; Salary</button>
       <button class="tab-btn" id="tabBtnTracker" data-tab="tracker" type="button">Tracker</button>
@@ -30,10 +30,9 @@
     </div>
 
     <main class="content">
-      <div id="matcherView" class="tab-view hidden">
+      <div id="matcherView" class="tab-view">
       <div id="warningsBanner" class="warnings-banner hidden"></div>
 
-      
       <section class="dashboard" id="dashboard">
         <div id="glitterLayer" class="glitter-layer"></div>
 
@@ -121,7 +120,6 @@
         </div>
       </section>
 
-      
       <section class="actions-row">
         <button id="analyzeBtn" class="primary-btn" disabled>Analyze Current Page</button>
         <button id="uploadResumeBtn" class="secondary-btn" title="Use a PDF/Word resume for this job only">📄 Upload Resume</button>
@@ -135,7 +133,6 @@
 
       <div id="statusLine" class="status-line"></div>
 
-      
       <section class="drawer">
         <button id="drawerToggle" class="drawer-toggle">
           <span>✎ Quick Resume Edit</span>
@@ -150,7 +147,6 @@
         </div>
       </section>
 
-      
       <section id="report" class="report hidden">
 
         <div class="report-block rb-rose" id="missingSkillsBlock">
@@ -309,7 +305,6 @@
       </div>
       </div>
 
-      
       <div id="prepView" class="tab-view hidden">
         <details id="prepSourcePicker" class="prep-source-picker">
           <summary id="prepSourcePickerSummary">Scan Sources</summary>
@@ -360,7 +355,6 @@
         <div id="prepAreasList" class="prep-areas-list"></div>
       </div>
 
-      
       <div id="applyView" class="tab-view hidden">
         <div class="prep-input-actions top-actions">
           <button id="coverLetterBtn" class="primary-btn full-width" type="button" disabled>📄 Cover Letter</button>
@@ -374,8 +368,7 @@
         </details>
       </div>
 
-      
-      <div id="scanView" class="tab-view">
+      <div id="scanView" class="tab-view hidden">
         <div class="prep-input-actions top-actions">
           <button id="scanAndFilterBtn" class="primary-btn full-width" type="button" disabled>🔍 Scan and Filter</button>
           <button id="saveScanBtn" class="secondary-btn full-width" type="button" disabled>💾 Save</button>
@@ -383,7 +376,6 @@
         <div id="scanStatusLine" class="status-line"></div>
         <div id="scanResultsList" class="prep-areas-list"></div>
       </div>
-
 
       <div id="trackerView" class="tab-view hidden">
         <div class="tracker-toolbar">

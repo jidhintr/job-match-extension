@@ -150,9 +150,6 @@ addTrackerStatusBtn.addEventListener("click", () => {
 const DEFAULT_MATCHER_INSTRUCTIONS = `The candidate speaks only English. If the job posting states fluency in another language (German, Dutch, French, Polish, etc.) as a MANDATORY/REQUIRED qualification — not merely a "nice to have" or an incidental mention like "collaborates with our Berlin office" — this is a hard disqualifying blocker.
 The candidate holds an EU Blue Card and is legally authorized to work in Poland without any visa or employer sponsorship, and is open to the general labor market (not tied to a single employer). For roles based outside Poland, the candidate can generally transfer their Blue Card to another EU country with minimal paperwork under EU intra-mobility rules. Do NOT treat "role is outside Poland" as a negative factor by itself, and do NOT lower chance_of_getting_job for it. ONLY flag it if the job posting explicitly states something like "no visa sponsorship," "must already be authorized to work locally," or "no relocation support" for a role outside Poland.`;
 
-// These mirror the DEFAULT_*_PROMPT constants in sidepanel/features/*.js — kept as plain text
-// here because importing them would pull in the sidepanel's DOM-bound modules. A fixed, non-editable line that keeps each response
-// matching its JSON schema is appended by the sidepanel after whatever is saved here.
 const DEFAULT_PREP_OVERVIEW_PROMPT = `You are an expert technical interview coach who has studied thousands of real candidate-reported interview experiences from Glassdoor, TeamBlind, and Prepfully.
 
 Given a JOB DESCRIPTION, identify the company_name and job_title exactly as posted, then predict the realistic focus areas of this role's interview process and how much each is typically weighted.
@@ -347,10 +344,6 @@ async function loadSavedValues() {
   const savedInstructions = stored.customInstructions || {};
   instrInputs.matcher.value = savedInstructions.matcher !== undefined ? savedInstructions.matcher : INSTR_DEFAULTS.matcher;
   instrInputs.prep.value = savedInstructions.prep || INSTR_DEFAULTS.prep;
-  // coverLetter/salary used to be one shared "apply" field holding only extra notes appended
-  // after the (then-hardcoded) prompt. If that's still the only thing saved, fold it into the
-  // new default the same way it used to be combined, instead of dropping it or — worse —
-  // letting it silently replace the whole prompt (which would delete the task instructions).
   const migrateApplyNote = (defaultPrompt) =>
     savedInstructions.apply?.trim()
       ? `${defaultPrompt}\n\nADDITIONAL INSTRUCTIONS FROM THE USER (apply as extra context/rules):\n"""\n${savedInstructions.apply.trim()}\n"""`
@@ -416,8 +409,7 @@ saveProvidersBtn.addEventListener("click", async () => {
     perplexityKey: perplexityKeyInput.value.trim(),
     perplexityModel: perplexityModelInput.value.trim() || PROVIDER_DEFAULT_MODELS.perplexity
   });
-  
-  
+
   flashStatus(providersStatus, "Saved ✓", "ok");
 });
 

@@ -10,12 +10,8 @@ function normalizeWebhookUrl(webhookUrl) {
     return normalized;
   }
 
-  // Strip the /u/<N>/ account-slot segment Chrome adds when a link is copied from the address
-  // bar with multiple Google accounts signed in — it's a browser artifact, not part of the real
-  // deployment URL, and left in it causes an anonymous fetch() to be redirected to a sign-in page.
   normalized = normalized.replace(/^(https:\/\/script\.google\.com\/macros)\/u\/\d+\//i, "$1/");
 
-  // Accept common mistaken forms such as /dev, /edit, or the bare deployment URL.
   normalized = normalized.replace(/\/dev(?:\/)?$/i, "/exec");
   normalized = normalized.replace(/\/edit(?:\/)?$/i, "/exec");
   if (!/\/exec(?:\/)?$/i.test(normalized)) {
@@ -56,7 +52,6 @@ export async function postToSheets(webhookUrl, payload) {
   }
 }
 
-// Plain GET against the Apps Script /exec endpoint — no AI involved, just reads the sheet.
 export async function fetchFromSheets(webhookUrl) {
   const url = validateWebhookUrl(webhookUrl);
   const res = await fetch(url, {
@@ -77,8 +72,6 @@ export async function fetchFromSheets(webhookUrl) {
   try {
     data = JSON.parse(trimmed);
   } catch {
-    // Apps Script can return an HTML page (login prompt, stack trace, or deployment splash page)
-    // instead of JSON when the deployment permissions or URL are wrong.
     console.error("Sheets GET returned non-JSON.", { requestedUrl: webhookUrl, normalizedUrl: validateWebhookUrl(webhookUrl), finalUrl: res.url, redirected: res.redirected, httpStatus: res.status, bodySnippet: trimmed.slice(0, 300) });
     const redirectedToLogin = (res.redirected && res.url.includes("accounts.google.com")) || trimmed.includes("accounts.google.com") || trimmed.includes("Sign in") || trimmed.includes("<html");
     const detail = redirectedToLogin

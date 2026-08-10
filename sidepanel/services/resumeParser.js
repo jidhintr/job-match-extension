@@ -1,5 +1,3 @@
-
-
 const MAX_CHARS = 20000;
 
 export async function parseResumeFile(file) {
@@ -64,8 +62,6 @@ async function parseDocx(file) {
 async function extractZipEntryText(bytes, entryName) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-  
-  
   const EOCD_SIG = 0x06054b50;
   let eocdOffset = -1;
   const searchStart = Math.max(0, bytes.length - 22 - 65535);

@@ -75,8 +75,6 @@ async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema, 
 
   const candidate = data?.candidates?.[0];
 
-  // Hitting the output cap truncates the JSON mid-object, so it can never be parsed. Flagged so the
-  // caller can retry this same model uncapped — see callGeminiWithFallback.
   if (candidate?.finishReason === "MAX_TOKENS") {
     const capErr = new Error("Gemini hit the output token cap.");
     capErr.isOutputCap = true;
@@ -121,9 +119,6 @@ export async function callGeminiWithFallback(apiKey, systemPrompt, userPrompt, s
       err = firstErr;
     }
 
-    // The cap is a cost guard, not a product limit. If a response genuinely needs more room (thinking
-    // tokens count against it on the flash models), retry this same model uncapped rather than hand
-    // the user a failure or a shorter report than they'd have got before.
     if (err.isOutputCap && maxOutputTokens) {
       console.warn(`Gemini ${model} hit the ${maxOutputTokens}-token output cap — retrying uncapped.`);
       try {

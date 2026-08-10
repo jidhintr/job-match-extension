@@ -21,8 +21,6 @@
   const JUNK_TEXT_HINT = /^(cookie|privacy|terms|imprint|legal|faq|about( us)?|contact( us)?|home|log ?in|sign ?in|log ?out|sign ?up|register|create account|my account|newsletter|subscribe|talent network|talent community|job alert|saved jobs|job cart|search|filter|show \d+ more|load more|see more|next|previous|back to (search|results|top)|share|print|apply now)$/i;
   const JUNK_URL_HINT = /cookie|privacy|\/login|\/signin|\/signup|\/register|newsletter|subscribe|talent-?network|talent-?community|job-?alert|jobcart|mailto:|tel:|javascript:/i;
 
-  // Most career listing pages belong to a single employer, so this is a reliable fallback for
-  // any job card whose own container text didn't yield a usable company name.
   function guessSiteCompany() {
     const metaNames = ['meta[property="og:site_name"]', 'meta[name="application-name"]', 'meta[name="author"]'];
     for (const sel of metaNames) {

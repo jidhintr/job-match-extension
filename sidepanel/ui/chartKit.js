@@ -25,11 +25,10 @@ export function createChartTooltip(container) {
     tooltip.style.top = `${Math.max(8, y - tooltip.offsetHeight - 12)}px`;
   }
 
-  function show(title, rows, hint) {
+  function show(title, rows) {
     tooltip.innerHTML = "";
     tooltip.appendChild(el("div", "kpi-tip-title", title));
     rows.filter(Boolean).forEach((row) => tooltip.appendChild(el("div", "kpi-tip-row", row)));
-    if (hint) tooltip.appendChild(el("div", "kpi-tip-hint", hint));
     tooltip.classList.remove("hidden");
   }
 
@@ -37,7 +36,7 @@ export function createChartTooltip(container) {
     tooltip.classList.add("hidden");
   }
 
-  function interactive(node, { title, rows, hint, onClick, peers = [] }) {
+  function interactive(node, { title, rows, onClick, peers = [] }) {
     node.classList.add("kpi-interactive");
     if (onClick) node.classList.add("kpi-clickable");
 
@@ -47,7 +46,7 @@ export function createChartTooltip(container) {
     };
 
     node.addEventListener("mouseenter", (event) => {
-      show(title, rows, hint);
+      show(title, rows);
       move(event);
       setActive(true);
     });

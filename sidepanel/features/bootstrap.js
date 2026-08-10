@@ -52,10 +52,6 @@ export function hasUsableResume() {
 export const setStatus = createStatusLine(statusLine);
 export const setApplyStatus = createStatusLine(applyStatusLine);
 
-// background.js gives every http/https tab its own dedicated side panel document, with that tab's
-// id baked into the URL as ?tabId=. Reading it here (rather than querying "the active tab") is
-// what makes this document's identity fixed to its own tab regardless of which tab the user is
-// currently looking at — required for concurrent, non-clobbering analyses across tabs.
 function getScopedTabIdFromUrl() {
   const raw = new URLSearchParams(location.search).get("tabId");
   const id = raw != null ? Number(raw) : NaN;
@@ -72,8 +68,6 @@ async function getActiveTabId() {
 }
 
 async function restoreTabState() {
-  // Fall back to an active-tab query only if this document was somehow opened without the
-  // tabId query param (e.g. manually navigated to sidepanel.html).
   state.tab.currentTabId = getScopedTabIdFromUrl() ?? (await getActiveTabId());
   if (state.tab.currentTabId == null) return;
 
@@ -92,10 +86,6 @@ async function restoreTabState() {
     renderReport(state.matcher.lastResult);
     setStatus("Restored previous analysis for this tab.", "ok");
   } else {
-    // No session-cached analysis for this tab — e.g. the side panel or the tab itself was closed
-    // and reopened, which gives this document a fresh tabId with nothing in session storage even
-    // though chrome.storage.session hasn't actually expired. Before making the user re-run Gemini
-    // on a job that's already saved (from this device or another), check the sheet by URL.
     await tryLoadSavedAnalysisForCurrentTab();
   }
   refreshApplyButtons();
@@ -104,9 +94,6 @@ async function restoreTabState() {
 async function tryLoadSavedAnalysisForCurrentTab() {
   if (!state.settings.sheetsWebhookUrl) return;
 
-  // Block Analyze for the whole duration of this check — otherwise a click landing mid-fetch
-  // could kick off a real Gemini analysis (and re-enable it) right as this passive check was
-  // about to find and show the already-saved summary for free.
   analyzeBtn.disabled = true;
   setStatus("Checking Google Sheets for a saved analysis...");
 
@@ -135,9 +122,6 @@ async function tryLoadSavedAnalysisForCurrentTab() {
     console.error("Could not check Sheets for an existing analysis.", err);
     setStatus("Could not check Google Sheets for a saved analysis.", "err");
   } finally {
-    // Re-derive the real enabled/disabled state (API key/resume present, etc.) rather than just
-    // flipping this back to enabled — refreshSetupBanner() runs right after restoreTabState()
-    // returns in init(), but set it here too in case this ever gets called from elsewhere.
     refreshSetupBanner();
   }
 }
@@ -181,9 +165,6 @@ export async function init() {
   refreshTrackerStatusOptions();
   resumeQuickEdit.value = state.settings.masterResume;
 
-  // Scan doesn't depend on anything restoreTabState() does (that's all matcher-tab session
-  // restore, including its own possibly-slow Sheets lookup) — enable it as soon as settings are
-  // known instead of leaving it disabled until that unrelated work finishes.
   refreshScanButton();
 
   await restoreTabState();
@@ -256,6 +237,26 @@ tabButtons.forEach((btn) => {
 
 window.addEventListener("app:navigate", (e) => {
   if (e.detail?.tab) activateTab(e.detail.tab);
+});
+
+function isTypingTarget(node) {
+  if (!node) return false;
+  return node.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(node.tagName);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+  if (isTypingTarget(e.target)) return;
+
+  const position = Number(e.key);
+  if (!Number.isInteger(position) || position < 1) return;
+
+  const visible = Array.from(tabButtons).filter((b) => !b.classList.contains("hidden"));
+  const target = visible[position - 1];
+  if (!target) return;
+
+  e.preventDefault();
+  activateTab(target.dataset.tab);
 });
 
 function applyTabVisibility(visibleTabs) {

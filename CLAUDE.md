@@ -66,6 +66,20 @@ Important project direction:
 - Keep settings local to the device unless a user explicitly uses the sheet sync.
 - New provider integrations should be added through the shared source abstraction and router pattern.
 
+## Code comment rule
+
+- Default to zero comments. Clear naming and small functions are the documentation.
+- Never restate what the code already says, and never add section banners, JSDoc blocks, file headers, or `// TODO`-style filler.
+- Only genuinely non-obvious logic (a workaround, a browser quirk, an ordering constraint) may carry a comment, and it must be a single short line.
+- If an explanation needs more than one line, it belongs in `docs/project-memory.md`, not in the source file.
+- Do not re-add comments that were previously removed.
+
+## UI copy rule
+
+- No instructional hint text on the interface. Do not write "Click to…", "Hover to…", "Press X to…" or similar.
+- Affordances are communicated by cursor, hover state and layout, not by captions.
+- Labels and subtitles should describe what the data is, never how to operate the control.
+
 ## Working principles for future changes
 
 1. Favor multi-provider fallback over Google-only dependence.

@@ -95,8 +95,9 @@ function sectorPath(cx, cy, inner, outer, startDeg, endDeg) {
   return `M ${ox1} ${oy1} A ${outer} ${outer} 0 ${large} 1 ${ox2} ${oy2} L ${ix1} ${iy1} A ${inner} ${inner} 0 ${large} 0 ${ix2} ${iy2} Z`;
 }
 
-function renderPipeline(rows, total) {
-  const card = section("Pipeline", "Hover a slice, click to open it in Tracker");
+function renderPipelineCell(rows, total) {
+  const cell = el("div", "kpi-chart-cell");
+  cell.appendChild(el("div", "kpi-chart-cell-title", "Pipeline"));
   const wrap = el("div", "kpi-donut-wrap");
 
   const chart = svg("svg", { viewBox: "0 0 120 120", class: "kpi-donut" });
@@ -132,7 +133,6 @@ function renderPipeline(rows, total) {
         `${row.count} of ${total} jobs · ${row.pct}%`,
         row.avgAts == null ? null : `Average ATS ${row.avgAts}%`
       ],
-      hint: row.count > 0 ? "Click to filter the Tracker" : "No jobs at this stage",
       onClick: row.count > 0 ? () => goToTracker({ status: row.status }) : null
     };
 
@@ -148,8 +148,8 @@ function renderPipeline(rows, total) {
   chart.append(centerValue, centerLabel);
 
   wrap.append(chart, legend);
-  card.appendChild(wrap);
-  return card;
+  cell.appendChild(wrap);
+  return cell;
 }
 
 function renderActivity(buckets, byDay) {
@@ -261,7 +261,6 @@ function renderScatter(points) {
     interactive(dot, {
       title: p.label,
       rows: [`ATS ${p.ats}% · Chance ${p.chance}%`, `Status: ${p.status}`],
-      hint: "Click to find it in Tracker",
       onClick: () => goToTracker({ search: p.company })
     });
     chart.appendChild(dot);
@@ -288,11 +287,12 @@ function renderScoreQuality(items) {
 
 const TITLE_PALETTE = ["#a78bfa", "#38bdf8", "#fbbf24", "#4ade80", "#fb7185", "#22d3ee"];
 
-function renderTitleRose(entries, total) {
-  const card = section("Roles you chase", "Hover a petal, click to open it in Tracker");
+function renderRoseCell(entries, total) {
+  const cell = el("div", "kpi-chart-cell");
+  cell.appendChild(el("div", "kpi-chart-cell-title", "Roles you chase"));
   if (entries.length === 0) {
-    card.appendChild(el("p", "kpi-muted", "No job titles recorded yet."));
-    return card;
+    cell.appendChild(el("p", "kpi-muted", "No job titles recorded yet."));
+    return cell;
   }
 
   const chart = svg("svg", { viewBox: "0 0 200 200", class: "kpi-rose" });
@@ -325,7 +325,6 @@ function renderTitleRose(entries, total) {
         `${Math.round((entry.count / total) * 100)}% of tracked jobs in range`,
         `Ranked #${i + 1} of ${entries.length}`
       ],
-      hint: "Click to open it in Tracker",
       onClick: () => goToTracker({ search: entry.label })
     };
 
@@ -340,7 +339,15 @@ function renderTitleRose(entries, total) {
 
   const wrap = el("div", "kpi-rose-wrap");
   wrap.append(chart, legend);
-  card.appendChild(wrap);
+  cell.appendChild(wrap);
+  return cell;
+}
+
+function renderPipelineAndRoles(pipelineRows, titleEntries, total) {
+  const card = section("Pipeline & roles");
+  const pair = el("div", "kpi-chart-pair");
+  pair.append(renderPipelineCell(pipelineRows, total), renderRoseCell(titleEntries, total));
+  card.appendChild(pair);
   return card;
 }
 
@@ -375,7 +382,6 @@ function renderFrequencyList(title, subtitle, entries, emptyText, options = {}) 
         total ? `${Math.round((entry.count / total) * 100)}% of tracked jobs in range` : null,
         `Ranked #${i + 1}`
       ],
-      hint: searchable ? "Click to find it in Tracker" : null,
       onClick: searchable ? () => goToTracker({ search: entry.label }) : null
     });
 
@@ -400,7 +406,7 @@ function renderKpi() {
 
   kpiBody.append(
     renderHeadline(headline(items)),
-    renderPipeline(pipelineByStatus(items, statusOrder), items.length),
+    renderPipelineAndRoles(pipelineByStatus(items, statusOrder), topTitles(items), items.length),
     renderActivity(activityOverTime(items, state.kpi.range), Number(state.kpi.range) <= 14),
     renderScatter(scoreScatter(items)),
     renderScoreQuality(items),
@@ -411,8 +417,7 @@ function renderKpi() {
       "No missing skills recorded yet.",
       { accent: "linear-gradient(90deg, var(--red), var(--yellow))", total: items.length, unit: "job" }
     ),
-    renderTitleRose(topTitles(items), items.length),
-    renderFrequencyList("Most applied companies", "Click a company to open it in Tracker", topCompanies(items), "No company names recorded yet.", {
+    renderFrequencyList("Most applied companies", null, topCompanies(items), "No company names recorded yet.", {
       total: items.length,
       unit: "job",
       searchable: true

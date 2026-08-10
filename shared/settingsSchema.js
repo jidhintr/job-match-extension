@@ -1,4 +1,4 @@
-export const MAX_TRACKER_STATUSES = 5;
+export const MAX_TRACKER_STATUSES = 10;
 export const ANALYSED_STATUS = "Analysed";
 export const DEFAULT_TRACKER_STATUS_OPTIONS = [
   { label: "New", enabled: true },

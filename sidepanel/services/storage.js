@@ -45,8 +45,6 @@ export function setMasterResume(value) {
   return chrome.storage.local.set({ masterResume: value });
 }
 
-// No corresponding read exists anywhere in the app — carried forward as-is from
-// the pre-refactor code, not fixed as part of this structural pass.
 export function setPrepJobState(prepJobUrl, data) {
   return chrome.storage.session.set({ [prepJobUrl]: data });
 }

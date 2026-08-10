@@ -39,8 +39,6 @@ export async function extractJobTextFromActiveTab(currentTabId) {
   });
 }
 
-// Serialized by chrome.scripting.executeScript and re-executed inside the background job
-// tab — must stay self-contained, no references outside this function body.
 function waitForStableDomInPage() {
   return new Promise((resolve) => {
     let settled = false;
@@ -62,10 +60,6 @@ function waitForStableDomInPage() {
   });
 }
 
-// Opens a job posting URL in a background tab, waits for its (possibly client-rendered)
-// content to settle, then reuses content/content.js — the same extraction logic the
-// single-page matcher runs on the active tab — so scan scoring reads real job text
-// instead of just the short snippet visible on the listing page.
 export function extractJobTextFromUrl(url) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -164,11 +158,6 @@ export const ANSWER_PROVIDER_URLS = {
   perplexity: "https://www.perplexity.ai/search"
 };
 
-// This function is serialized by chrome.scripting.executeScript and re-executed
-// inside a different tab's page context (e.g. chatgpt.com, gemini.google.com) —
-// it must stay 100% self-contained. Do not extract its helpers elsewhere or
-// reference anything outside this function body; a broken reference here fails
-// silently at click-time only, since the injection call ends in .catch(() => {}).
 function fillAndSubmitPrompt(promptText) {
   function setNativeValue(el, value) {
     const proto = el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;

@@ -174,14 +174,8 @@ export const RESUME_SECTIONS = [
 
 export const DEFAULT_SECTION_ORDER = RESUME_SECTIONS.map((s) => ({ id: s.id, enabled: true }));
 
-// The sections a sheet-reconstructed summary has no data for — see renderReport()'s
-// isPartialFromSheet check.
 const DEEP_ANALYSIS_BLOCK_IDS = ["stage1Block", "stage2Block", "stage3Block", "goodFitBlock", "rolePrepBlock", "companyInsightsBlock"];
 
-// Covers the identity fields, both scores, the warnings object and the model's thinking tokens.
-// Each enabled section adds its own maxTokens on top, so the budget shrinks automatically when
-// sections are disabled in Settings. These are deliberately generous — the cap exists to bound
-// runaway cost, and callGeminiWithFallback retries uncapped if a response ever needs more room.
 const BASE_OUTPUT_TOKENS = 750;
 
 function buildAnalysisPromptAndSchema(sectionOrder) {
@@ -344,8 +338,6 @@ function spawnGlitterBurst() {
 
 const MAX_TIP_FACTORS = 6;
 
-// The model states these directly in score_factors; results saved before that field existed (and
-// sheet-reconstructed summaries) fall back to the negative signals already present in the report.
 function scoreFactors(result, kind) {
   const stated = result.score_factors?.[kind];
   if (Array.isArray(stated) && stated.length > 0) return stated.slice(0, MAX_TIP_FACTORS);
@@ -521,9 +513,6 @@ export function renderReport(result) {
   document.getElementById("companyConfidenceNote").textContent =
     insights.confidence_note || "AI-generated estimate — verify current details on Glassdoor/LinkedIn.";
 
-  // A sheet-reconstructed summary (see buildResultFromSheetItem) never has stage_1_attention_test —
-  // a real Gemini result always does, since it's a required schema field. Use that as the signal to
-  // hide the deep-dive sections entirely instead of showing them empty with no data behind them.
   const isPartialFromSheet = !result.stage_1_attention_test;
   DEEP_ANALYSIS_BLOCK_IDS.forEach((id) => {
     document.getElementById(id)?.classList.toggle("hidden", isPartialFromSheet);
@@ -534,11 +523,6 @@ export function renderReport(result) {
   emptyState.classList.add("hidden");
 }
 
-// Reconstructs a renderReport()-shaped result from what was actually persisted to the sheet —
-// only the score gauges, missing skills, and add/remove skills pills. The deep-dive sections
-// (attention test, mindset breakdown, tech gap table, good fit, role prep, company insights)
-// were never saved anywhere, so they render as their normal "not enough information" placeholders
-// until the user clicks Analyze again to spend tokens on a full report.
 export function buildResultFromSheetItem(item) {
   return {
     company_name: item.companyName || "",
@@ -569,9 +553,6 @@ async function runAnalysis() {
     state.matcher.lastCompanyGuess = extracted.company;
     state.matcher.lastJobUrl = extracted.url;
 
-    // Clicking Analyze again on the job already showing a sheet summary (including one restored
-    // passively on panel open) is the user asking for the full report — without this there'd be no
-    // way to reach a real analysis, or to re-run against a newly uploaded resume, once a row exists.
     const clickingAnalyzeAgainForSameJob = alreadyShowingSheetSummary && previousJobUrl === extracted.url;
 
     if (!clickingAnalyzeAgainForSameJob) {
@@ -632,9 +613,6 @@ function buildSheetPayload(isNewRow) {
   };
 }
 
-// status is sent only for a URL with no existing row, so re-analysing a job the user already moved
-// to Applied/Rejected never resets it. defaultStatus covers the same case on redeployed Apps
-// Scripts; sending both means a stale deployment still stamps Analysed instead of Pending.
 async function autoSaveAnalysis() {
   if (!state.settings.sheetsWebhookUrl || !state.matcher.lastResult || !state.matcher.lastJobUrl) return;
 
@@ -674,10 +652,6 @@ async function autoSaveAnalysis() {
 
 analyzeBtn.addEventListener("click", () => runAnalysis());
 
-// Triggered by the "analyze-resume" keyboard shortcut (background.js) once the side panel is open.
-// Every tab's panel instance receives this message, so only act if it's tagged for THIS tab —
-// otherwise triggering the shortcut in one tab would also kick off analysis in every other tab's
-// panel that happens to be open.
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === "JOB_MATCH_SHORTCUT_ANALYZE" && message.tabId === state.tab.currentTabId) {
     runAnalysis();

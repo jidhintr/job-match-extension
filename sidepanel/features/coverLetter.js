@@ -4,9 +4,6 @@ import { buildEditablePrompt, condenseText, TEXT_LIMITS } from "../services/prom
 import { coverLetterBtn } from "../ui/dom.js";
 import { effectiveResume, setApplyStatus, refreshApplyButtons } from "./bootstrap.js";
 
-// Seeds the Cover Letter box in Settings > Custom AI Instructions the first time it's opened.
-// Anything the user types there fully replaces this body (COVER_LETTER_FIXED_SUFFIX always stays
-// appended and isn't editable, so the response still matches COVER_LETTER_SCHEMA).
 export const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career coach writing a concise, professional cover letter for a specific job application.
 
 You will be given a candidate's MASTER RESUME and a JOB DESCRIPTION. Write a genuine, tailored one-page cover letter — never use placeholder text like "[Your Name]" or "[Company Name]"; extract the candidate's actual name from the resume and the company/role from the job description, and use them directly. If the candidate's name truly cannot be found in the resume, omit it (return an empty string) rather than inventing or placeholding it.
@@ -32,7 +29,6 @@ const COVER_LETTER_SCHEMA = {
   required: ["candidate_name", "opening_paragraph", "key_points", "closing_paragraph"]
 };
 
-// A one-page letter is ~250-350 words, so this leaves headroom without paying for an essay.
 const COVER_LETTER_MAX_OUTPUT_TOKENS = 1500;
 
 async function generateCoverLetter() {

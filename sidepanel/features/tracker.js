@@ -25,9 +25,10 @@ const setTrackerStatus = createStatusLine(trackerStatusLine);
 
 const ANALYSED_STATUS_COLOR = "#ec4899";
 
-// Colors are assigned by position in the configured list, not by name — that's what lets a
-// renamed status ("Open" instead of "New") keep a stable, distinguishing color.
-const STATUS_COLOR_PALETTE = ["#4c8dff", "#d99a3d", "#34c07b", "#e5484d", "#8b5cf6"];
+const STATUS_COLOR_PALETTE = [
+  "#4c8dff", "#d99a3d", "#34c07b", "#e5484d", "#8b5cf6",
+  "#22d3ee", "#f97316", "#a3e635", "#f472b6", "#818cf8"
+];
 const UNKNOWN_STATUS_COLOR = "#8b90a0";
 
 export function configuredStatuses() {
@@ -36,14 +37,32 @@ export function configuredStatuses() {
     : DEFAULT_TRACKER_STATUS_OPTIONS;
 }
 
-export function enabledStatuses() {
-  const enabled = configuredStatuses().filter((s) => s.enabled).map((s) => s.label);
-  const base = enabled.length > 0 ? enabled : configuredStatuses().map((s) => s.label);
-  return [ANALYSED_STATUS, ...base.filter((s) => s !== ANALYSED_STATUS)];
+function statusesInSheet() {
+  const seen = [];
+  state.tracker.items.forEach((it) => {
+    const label = String(it.status || "").trim();
+    if (label && !seen.includes(label)) seen.push(label);
+  });
+  return seen.sort((a, b) => a.localeCompare(b));
 }
 
-// A card's own current status must always be selectable even if the user later disabled or
-// renamed it in Settings — otherwise changing any other card's status would silently reset this one.
+function withSheetStatuses(base) {
+  const ordered = [ANALYSED_STATUS, ...base.filter((s) => s !== ANALYSED_STATUS)];
+  statusesInSheet().forEach((s) => {
+    if (!ordered.includes(s)) ordered.push(s);
+  });
+  return ordered;
+}
+
+export function allStatuses() {
+  return withSheetStatuses(configuredStatuses().map((s) => s.label));
+}
+
+export function enabledStatuses() {
+  const enabled = configuredStatuses().filter((s) => s.enabled).map((s) => s.label);
+  return withSheetStatuses(enabled.length > 0 ? enabled : configuredStatuses().map((s) => s.label));
+}
+
 function statusOptionsForItem(currentStatus) {
   const enabled = enabledStatuses();
   return enabled.includes(currentStatus) ? enabled : [...enabled, currentStatus];
@@ -51,7 +70,7 @@ function statusOptionsForItem(currentStatus) {
 
 export function colorForStatus(label) {
   if (label === ANALYSED_STATUS) return ANALYSED_STATUS_COLOR;
-  const idx = configuredStatuses().findIndex((s) => s.label === label);
+  const idx = allStatuses().filter((s) => s !== ANALYSED_STATUS).indexOf(label);
   return idx >= 0 ? STATUS_COLOR_PALETTE[idx % STATUS_COLOR_PALETTE.length] : UNKNOWN_STATUS_COLOR;
 }
 
@@ -90,7 +109,6 @@ function renderStatusFilterOptions() {
   trackerStatusFilter.value = state.tracker.statusFilter;
 }
 
-// Called on init and whenever Settings > Tracker Statuses changes.
 export function refreshTrackerStatusOptions() {
   renderStatusFilterOptions();
   renderTrackerList();
@@ -109,14 +127,14 @@ export async function refreshTrackerFromSheet() {
   state.tracker.cachedAt = null;
 
   const items = await ensureTrackerItems({ force: true });
-  renderTrackerList();
+  refreshTrackerStatusOptions();
   window.dispatchEvent(new CustomEvent("tracker:updated", { detail: { count: items.length } }));
   return items;
 }
 
 export function warmTrackerCache() {
   if (!state.settings.sheetsWebhookUrl || state.tracker.loaded) return;
-  ensureTrackerItems().then(renderTrackerList).catch((err) => console.error("Tracker cache warm-up failed.", err));
+  ensureTrackerItems().then(refreshTrackerStatusOptions).catch((err) => console.error("Tracker cache warm-up failed.", err));
 }
 
 function formatDateTime(value) {
@@ -125,10 +143,9 @@ function formatDateTime(value) {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-// GET is a plain fetch against the Apps Script webhook — application logic only, never an AI call.
 async function loadTrackerData({ force = false } = {}) {
   if (state.tracker.loaded && !force) {
-    renderTrackerList();
+    refreshTrackerStatusOptions();
     return;
   }
 
@@ -137,7 +154,7 @@ async function loadTrackerData({ force = false } = {}) {
 
   try {
     await ensureTrackerItems({ force });
-    renderTrackerList();
+    refreshTrackerStatusOptions();
   } catch (err) {
     console.error(err);
     setTrackerStatus(err.message || "Could not load from Sheets.", "err");
@@ -146,14 +163,10 @@ async function loadTrackerData({ force = false } = {}) {
   }
 }
 
-// Renders instantly from whatever is already cached. The sheet is only re-read when the cache has
-// expired, the Refresh button is pressed, or an analysis/scan save invalidates it.
 export function loadTrackerIfNeeded() {
   loadTrackerData({ force: false });
 }
 
-// Serialised so concurrent callers (tab switch, warm-up, post-save refresh) can never overlap
-// fetches or resolve with items an in-flight load is about to replace.
 let loadQueue = Promise.resolve();
 
 export function ensureTrackerItems({ force = false } = {}) {
@@ -194,8 +207,6 @@ export function trackerSourceLabel() {
   return ` Cached ${cacheAgeLabel(state.tracker.cachedAt)}.`;
 }
 
-// Used by matcher.js/bootstrap.js to check whether a job was already analyzed and saved (from
-// this device or another one) before spending any Gemini tokens on it again.
 export async function findSavedJobByUrl(jobUrl) {
   if (!jobUrl || !state.settings.sheetsWebhookUrl) return null;
   try {

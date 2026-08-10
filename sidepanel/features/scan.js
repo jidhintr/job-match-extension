@@ -11,9 +11,6 @@ import { effectiveResume } from "./bootstrap.js";
 
 const setScanStatus = createStatusLine(scanStatusLine);
 
-// Seeds the Scan Jobs box in Settings > Custom AI Instructions the first time it's opened.
-// Anything the user types there fully replaces this body (BULK_MATCH_FIXED_SUFFIX always stays
-// appended and isn't editable, so the response still matches BULK_MATCH_SCHEMA).
 export const DEFAULT_BULK_MATCH_PROMPT = `You are a fast ATS matching engine. Given a candidate's resume and one job posting (title/company/description, which may be brief), return a realistic match percentage and exactly 7 key technical skills/technologies this posting asks for.
 
 Rules:
@@ -32,8 +29,6 @@ const BULK_MATCH_SCHEMA = {
   required: ["is_job_posting", "match_percent", "tech_stack"]
 };
 
-// The response itself is tiny (a flag, a number, 7 tags) but thinking tokens count against this cap
-// on the flash models, so it stays well above the visible output size.
 const BULK_MATCH_MAX_OUTPUT_TOKENS = 600;
 
 async function runScanAndFilter() {
@@ -51,7 +46,6 @@ async function runScanAndFilter() {
       return;
     }
 
-    // Condensed once, reused for every job — this text is re-sent on each request in the loop.
     const resume = condenseText(effectiveResume(), TEXT_LIMITS.resumeBrief);
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];

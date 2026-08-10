@@ -1,5 +1,3 @@
-
-
 const QUESTION_SYSTEM_PROMPT = `You are an expert technical interview coach with deep knowledge of real candidate-reported interview questions from Glassdoor, Reddit, LeetCode, and TeamBlind.
 
 Given a company, job title, and one specific interview focus area, produce 6 to 10 realistic interview questions actually asked for that area at that company — grounded in real reported patterns, not generic textbook questions.
@@ -19,8 +17,7 @@ function extractJsonBlock(rawText) {
   try {
     return JSON.parse(rawText);
   } catch {
-    
-    
+
     const match = rawText.match(/\{[\s\S]*\}/);
     if (!match) return null;
     try {

@@ -218,17 +218,11 @@
     <details class="card" open>
       <summary>API Keys</summary>
       <div class="card-body">
-        <div class="hint">
-          Gemini powers every feature; the rest are optional extra sources for Interview Prep question
-          scanning. All keys stay on this device only.
-        </div>
+        <div class="hint">Keys stay on this device. Only Gemini is required.</div>
 
         <div class="field-group">
           <div class="field-group-title">Google Gemini <span style="font-weight:400;color:var(--muted)">— required</span></div>
-          <div class="hint" style="margin-top:0">
-            Get a key from
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>.
-          </div>
+          <div class="hint" style="margin-top:0"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get a key</a></div>
           <div class="key-row">
             <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" />
             <button type="button" id="toggleKeyVisibility" class="ghost">Show</button>
@@ -298,9 +292,7 @@
         <hr class="section-divider" />
 
         <label for="sheetsWebhookUrl">Google Sheets Webhook URL</label>
-        <div class="hint">
-          Paste your deployed Apps Script <strong>/exec</strong> URL here. Leave blank to disable Sheet logging.
-        </div>
+        <div class="hint">Your deployed Apps Script <strong>/exec</strong> URL. Blank disables Sheet logging.</div>
         <input type="text" id="sheetsWebhookUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" />
         <div class="actions">
           <button type="button" id="saveSheetsUrl">Save Webhook URL</button>
@@ -312,13 +304,13 @@
     <details class="card" open>
       <summary>Visible Tabs</summary>
       <div class="card-body">
-        <div class="hint">Choose which side panel tabs to show. At least one must stay visible.</div>
+        <div class="hint">At least one tab must stay visible.</div>
         <div id="tabVisibilityList" style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
           <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px">
             <input type="checkbox" id="tabVisScan" style="width:16px;height:16px;accent-color:var(--accent)" /> Scan Jobs
           </label>
           <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px">
-            <input type="checkbox" id="tabVisMatcher" style="width:16px;height:16px;accent-color:var(--accent)" /> Resume Matcher
+            <input type="checkbox" id="tabVisMatcher" style="width:16px;height:16px;accent-color:var(--accent)" /> Matcher
           </label>
           <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px">
             <input type="checkbox" id="tabVisPrep" style="width:16px;height:16px;accent-color:var(--accent)" /> Interview Prep
@@ -342,8 +334,8 @@
     <details class="card" open>
       <summary>Tracker Statuses</summary>
       <div class="card-body">
-        <div class="hint">Rename, enable/disable, remove, or add statuses (up to 5) — these control the labels offered in the Tracker tab's filter and per-card dropdowns. Changes save automatically.</div>
-        <div class="hint"><strong>Analysed</strong> is a reserved status applied automatically to every job the Resume Matcher analyses. It's always filterable in the Tracker, doesn't count toward the 5, and can't be renamed or removed.</div>
+        <div class="hint">Up to 10 statuses. Saves automatically. Any status already in your sheet stays usable even if it isn't listed here.</div>
+        <div class="hint"><strong>Analysed</strong> is reserved, always available, and can't be edited.</div>
         <div id="trackerStatusRows" style="display:flex;flex-direction:column;gap:8px;margin-top:6px"></div>
         <div class="actions">
           <button type="button" id="addTrackerStatusBtn" class="ghost">+ Add Status</button>
@@ -355,13 +347,12 @@
     <details class="card" open>
       <summary>Save Guard</summary>
       <div class="card-body">
-        <div class="hint">Analysed jobs are auto-saved to the sheet. These rules decide when to stop and ask first, so weak matches don't clutter your tracker.</div>
-        <div class="hint"><strong>Asks first</strong> when a foreign-language barrier is found, or when BOTH scores fall below the values below. <strong>Saves silently</strong> when either score clears its threshold, or when a keyword below appears in the posting. Visa, sponsorship and relocation notices never block the save.</div>
-        <label for="guardMinAts">Ask when ATS score is below (%)</label>
+        <div class="hint">Asks before saving on a language barrier, or when both scores fall below these values. Visa and relocation notices never block a save.</div>
+        <label for="guardMinAts">Ask when ATS is below (%)</label>
         <input type="number" id="guardMinAts" min="0" max="100" step="1" />
-        <label for="guardMinChance">…and chance of getting the job is below (%)</label>
+        <label for="guardMinChance">…and chance is below (%)</label>
         <input type="number" id="guardMinChance" min="0" max="100" step="1" />
-        <label for="guardKeywords">Always auto-save when the posting mentions (comma separated)</label>
+        <label for="guardKeywords">Always auto-save if the posting mentions</label>
         <input type="text" id="guardKeywords" placeholder=".net, c#" />
         <div class="actions">
           <button type="button" id="saveGuardSettingsBtn">Save</button>
@@ -373,7 +364,7 @@
     <details class="card" open>
       <summary>Data Cache</summary>
       <div class="card-body">
-        <div class="hint">The Tracker and KPI tabs read from a local cache instead of calling Google Sheets on every view. The sheet is only fetched when this cache expires or when you press Refresh.</div>
+        <div class="hint">Sheets is only re-read when this expires or you press Refresh.</div>
         <label for="cacheTtlHours">Cache lifetime (hours)</label>
         <input type="number" id="cacheTtlHours" min="1" max="24" step="1" />
         <div class="actions">
@@ -387,11 +378,7 @@
     <details class="card" open>
       <summary>Resume Matcher — Report Sections</summary>
       <div class="card-body">
-        <div class="hint">
-          Turn off sections you don't use to cut Gemini output tokens — a disabled section is never
-          requested from the model at all, not just hidden. Use the arrows to reorder how sections
-          appear in the report.
-        </div>
+        <div class="hint">Disabled sections are never requested, cutting tokens. Arrows reorder.</div>
         <div id="resumeSectionsList" style="display:flex;flex-direction:column;gap:8px;margin-top:6px"></div>
       </div>
     </details>
@@ -399,12 +386,7 @@
     <details class="card" open>
       <summary>Custom AI Instructions (per tab)</summary>
       <div class="card-body">
-        <div class="hint">
-          These are the full instructions sent to Gemini for each feature — edit them directly to
-          change how that feature behaves. Each box starts pre-filled with the current default;
-          use Reset to go back to it. The exact JSON-response format each feature needs stays fixed
-          behind the scenes, so editing this text can't break parsing.
-        </div>
+        <div class="hint">Full prompt sent to Gemini per feature. Editing can't break response parsing.</div>
 
         <div style="margin-top:10px">
           <span class="field-label">Resume Matcher — Candidate Context</span>
@@ -462,7 +444,7 @@
       <summary>Master Resume</summary>
       <div class="card-body">
         <label for="resume">Master Resume</label>
-        <div class="hint">Paste your resume here and save it.</div>
+        <div class="hint">Used as the baseline for every analysis.</div>
         <textarea id="resume" placeholder="Paste your resume here..."></textarea>
         <div class="char-count" id="charCount">0 characters</div>
         <div class="actions">

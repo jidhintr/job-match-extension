@@ -5,9 +5,6 @@ import { fmtMoney } from "../ui/format.js";
 import { checkSalaryBtn, salaryResult, salaryResultBody } from "../ui/dom.js";
 import { effectiveResume, setApplyStatus, refreshApplyButtons } from "./bootstrap.js";
 
-// Seeds the Salary box in Settings > Custom AI Instructions the first time it's opened. Anything
-// the user types there fully replaces this body (SALARY_FIXED_SUFFIX always stays appended and
-// isn't editable, so the response still matches SALARY_SCHEMA).
 export const DEFAULT_SALARY_PROMPT = `You are a compensation analyst with broad knowledge of global tech salary benchmarks, cost of living, taxation, and market standards.
 
 Given a JOB DESCRIPTION (which states or implies a location) and role/company context — plus optional live web search snippets if provided — estimate a realistic salary for this specific role at this specific company/location, informed by market standards, typical tax burden, and inflation for that location.
@@ -68,7 +65,6 @@ async function checkSalary() {
       }
     }
 
-    // Pay depends on location, seniority and stack — not on the full posting, so the brief cap is enough.
     const job = condenseText(state.matcher.lastJobText, TEXT_LIMITS.jobBrief);
     const userPrompt = `COMPANY: ${state.matcher.lastResult.company_name || "Unknown"}\nROLE: ${state.matcher.lastResult.job_title || "Unknown"}\n\nJOB DESCRIPTION:\n"""\n${job}\n"""${webContext}`;
     const data = await callGeminiWithFallback(state.settings.apiKey, buildEditablePrompt(state.settings.customInstructions.salary, DEFAULT_SALARY_PROMPT, SALARY_FIXED_SUFFIX), userPrompt, SALARY_SCHEMA, (m) => {

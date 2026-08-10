@@ -30,8 +30,8 @@
   "commands": {
     "open-side-panel": {
       "suggested_key": {
-        "default": "Ctrl+Shift+Q",
-        "mac": "Command+Shift+Q"
+        "default": "Alt+J",
+        "mac": "Command+J"
       },
       "description": "Open the MatchResumer side panel"
     },
@@ -40,7 +40,7 @@
         "default": "Ctrl+Shift+A",
         "mac": "Command+Shift+A"
       },
-      "description": "Analyze the current page (Resume Matcher)"
+      "description": "Analyze the current page (Matcher)"
     }
   }
 }

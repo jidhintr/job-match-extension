@@ -14,12 +14,8 @@ export const state = {
     perplexityKey: "",
     perplexityModel: "",
     prepSourceSelection: { gemini: true, tavily: true, deepseek: true, openai: true, perplexity: true },
-    // Overwritten by init() (features/bootstrap.js) before any feature that reads
-    // it becomes reachable — see DEFAULT_SECTION_ORDER in features/matcher.js.
     resumeSectionOrder: [],
     customInstructions: { matcher: DEFAULT_MATCHER_INSTRUCTIONS, prep: "", coverLetter: "", salary: "", scan: "" },
-    // Overwritten by init() (features/bootstrap.js) via sanitizeTrackerStatusOptions() —
-    // see DEFAULT_TRACKER_STATUS_OPTIONS in features/tracker.js.
     trackerStatusOptions: [],
     cacheTtlHours: 2,
     guardMinAts: 50,
@@ -36,9 +32,6 @@ export const state = {
     lastJobUrl: "",
     lastCompanyGuess: "",
     lastResult: null,
-    // True once lastResult is known to already exist in the sheet (either just saved, or pulled
-    // from the sheet instead of re-running Gemini) — keeps the Save button disabled so the same
-    // row isn't written twice. Reset to false only when a fresh Gemini analysis produces a result.
     savedToSheets: false
   },
   prep: {

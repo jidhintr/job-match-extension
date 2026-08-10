@@ -22,9 +22,6 @@ import {
   prepCompanyNameEl
 } from "../ui/dom.js";
 
-// Seeds the Interview Prep box in Settings > Custom AI Instructions the first time it's opened.
-// Anything the user types there fully replaces this body (PREP_OVERVIEW_FIXED_SUFFIX always stays
-// appended and isn't editable, so the response still matches PREP_OVERVIEW_SCHEMA).
 export const DEFAULT_PREP_OVERVIEW_PROMPT = `You are an expert technical interview coach who has studied thousands of real candidate-reported interview experiences from Glassdoor, TeamBlind, and Prepfully.
 
 Given a JOB DESCRIPTION, identify the company_name and job_title exactly as posted, then predict the realistic focus areas of this role's interview process and how much each is typically weighted.
@@ -112,7 +109,6 @@ const PREP_CONSOLIDATION_SCHEMA = {
 
 const PREP_CONSOLIDATION_MAX_OUTPUT_TOKENS = 1800;
 
-// The raw pile is duplicates and web prose, so most of it is redundant before consolidation.
 const PREP_RAW_ITEM_LIMIT = 60;
 const PREP_RAW_ITEM_CHARS = 220;
 
