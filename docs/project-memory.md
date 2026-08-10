@@ -50,6 +50,17 @@ Every fallback hop re-sends the whole prompt, so the cascade itself was a token 
 - `MAX_PROMPT_SENDS` deliberately still allows every model a turn, which keeps the token guardrail rule intact — errors surface only once the routes are genuinely exhausted.
 - `400` is still treated as retryable. It is usually a malformed request that will fail identically everywhere, but it can also mean one model rejects a schema feature, so the send budget bounds the cost rather than removing the fallback.
 
+## Section-aware condensing
+
+`condenseText()` in `promptHelpers.js` used to strip only short boilerplate *lines*, then hard-truncate from the top at the char cap. Whole marketing sections survived, and on a posting that opens with "About us" / "Our values" / "Benefits" the budget was spent before the requirements were reached — so the section that actually drives matching was the part cut off by `[truncated]`. That was a quality bug, not only a token cost.
+
+- `stripNoiseSections()` walks the deduped lines and drops everything under a heading matching `NOISE_SECTION_HEADING` (about us, values, benefits, perks, diversity, EEO, hiring process, how to apply, legal). Dropping stops at the next `CONTENT_SECTION_HEADING` (responsibilities, requirements, qualifications, skills, what you'll do, nice to have, tech stack).
+- Only lines up to `SECTION_HEADING_MAX_LEN` are considered headings, so a long prose line can never be mistaken for one.
+- Trimming is applied only if a content heading was positively identified. A posting written in another language, or one with no recognisable structure, is returned untouched rather than guessed at.
+- `MIN_TRIMMED_CHARS` is the second guard: if the kept text is under it the original is used, which covers a stray heading word (a lone "Experience" in a nav menu) matching and leaving a stub.
+- Both guards fail toward keeping too much. A false positive costs tokens; a false negative would silently delete the requirements, so the asymmetry is deliberate.
+- Affects Matcher, Scan Jobs and Interview Prep, since all three condense through this function.
+
 ## Design notes
 
 - Use Sheets as a cache and status source when a given job URL has already been analyzed.
