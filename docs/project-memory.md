@@ -61,6 +61,17 @@ Every fallback hop re-sends the whole prompt, so the cascade itself was a token 
 - Both guards fail toward keeping too much. A false positive costs tokens; a false negative would silently delete the requirements, so the asymmetry is deliberate.
 - Affects Matcher, Scan Jobs and Interview Prep, since all three condense through this function.
 
+## Local junk-page rejection in scan
+
+The bulk scan used to spend a full AI call on every list entry, including cookie banners, login walls and talent-network signups, because `is_job_posting` was decided by the model. `looksLikeJobPosting()` in `scan.js` now decides that locally, after extraction and before the call.
+
+- Keep if `JOB_POSTING_SIGNAL` matches, otherwise keep anyway when the text is at least `MIN_JOB_TEXT_CHARS` and `JUNK_PAGE_SIGNAL` does not match. Rejection therefore needs both no posting signal and either junk wording or too little text.
+- The length fallback is what protects postings written in another language, which carry none of the English keywords.
+- Deliberately biased toward keeping: a false positive costs one call the model would have rejected anyway, a false negative silently hides a job the user would never see. Anything ambiguous, such as a careers homepage listing several roles, still goes to the model.
+- Empty extractions are now skipped locally. Previously they were sent as "(no description available)" and the model returned `is_job_posting: false`, so the outcome is unchanged and the call is saved.
+- Skipped entries are counted and reported in the scan status line so over-rejection is visible rather than silent.
+- The job page is still opened to get its text, so the saving is the AI call and its round trip, not the tab fetch.
+
 ## Design notes
 
 - Use Sheets as a cache and status source when a given job URL has already been analyzed.

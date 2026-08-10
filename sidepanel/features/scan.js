@@ -31,6 +31,19 @@ const BULK_MATCH_SCHEMA = {
 
 const BULK_MATCH_MAX_OUTPUT_TOKENS = 600;
 
+const JOB_POSTING_SIGNAL =
+  /(responsibilit|requirement|qualification|what you.{0,3}ll (do|need|bring)|years? of experience|we are looking for|your profile|must[-\s]have|nice[-\s]to[-\s]have|job description|about (the|this) (role|job|position)|experience (with|in)|you will|skills|salary|full[-\s]time|part[-\s]time|permanent|freelance|hybrid|remote|on[-\s]site)/i;
+
+const JUNK_PAGE_SIGNAL =
+  /(cookie (policy|notice|settings|preferences|consent)|privacy (policy|notice)|terms (of use|of service|and conditions)|create (an )?account|sign in to continue|forgot (your )?password|page not found|access denied|enable javascript|talent (network|community)|job alert)/i;
+
+const MIN_JOB_TEXT_CHARS = 300;
+
+function looksLikeJobPosting(text) {
+  if (JOB_POSTING_SIGNAL.test(text)) return true;
+  return text.length >= MIN_JOB_TEXT_CHARS && !JUNK_PAGE_SIGNAL.test(text);
+}
+
 async function runScanAndFilter() {
   if (!state.settings.apiKey || !effectiveResume()) return;
   scanAndFilterBtn.disabled = true;
@@ -47,6 +60,7 @@ async function runScanAndFilter() {
     }
 
     const resume = condenseText(effectiveResume(), TEXT_LIMITS.resumeBrief);
+    let skippedCount = 0;
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
       setScanStatus(`Opening ${i + 1}/${jobs.length}: ${job.title}...`);
@@ -62,9 +76,15 @@ async function runScanAndFilter() {
       if (!company) company = job.companyFallback || "";
       job.company = company;
 
+      const jobBrief = condenseText(jobText, TEXT_LIMITS.jobBrief);
+      if (!looksLikeJobPosting(jobBrief)) {
+        skippedCount++;
+        console.warn(`Scan: "${job.title}" does not read as a job posting — skipped without an AI call.`);
+        continue;
+      }
+
       setScanStatus(`Scoring ${i + 1}/${jobs.length}: ${job.title}...`);
       try {
-        const jobBrief = condenseText(jobText, TEXT_LIMITS.jobBrief) || "(no description available)";
         const userPrompt = `RESUME:\n"""\n${resume}\n"""\n\nJOB TITLE: ${job.title}\nCOMPANY: ${company}\nJOB TEXT:\n"""\n${jobBrief}\n"""`;
         const data = await callGeminiWithFallback(state.settings.apiKey, buildEditablePrompt(state.settings.customInstructions.scan, DEFAULT_BULK_MATCH_PROMPT, BULK_MATCH_FIXED_SUFFIX), userPrompt, BULK_MATCH_SCHEMA, undefined, BULK_MATCH_MAX_OUTPUT_TOKENS);
         const matchPercent = Math.round(Number(data.match_percent) || 0);
@@ -88,9 +108,10 @@ async function runScanAndFilter() {
     }
 
     const matchedCount = state.scan.results.length;
+    const skippedNote = skippedCount > 0 ? ` ${skippedCount} were not job postings.` : "";
     setScanStatus(matchedCount
-      ? `${matchedCount} of ${jobs.length} scanned jobs matched above 50%.`
-      : `Scanned ${jobs.length} jobs — none matched above 50%.`, "ok");
+      ? `${matchedCount} of ${jobs.length} scanned jobs matched above 50%.${skippedNote}`
+      : `Scanned ${jobs.length} jobs — none matched above 50%.${skippedNote}`, "ok");
     saveScanBtn.disabled = matchedCount === 0 || !state.settings.sheetsWebhookUrl;
   } catch (err) {
     console.error(err);
