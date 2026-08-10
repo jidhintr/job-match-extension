@@ -10,7 +10,6 @@ The main workflow is:
 2. extract the role and description
 3. compare it against the candidate resume
 4. generate prep guidance and likely question areas
-5. optionally create a cover letter or salary estimate
 6. save the result to Sheets and track applications
 
 ## Architecture summary
@@ -39,6 +38,17 @@ The preferred end state is:
 - provider fallback on quota / timeout / unavailable errors
 - reduced token usage via targeted prompts and smaller payloads
 - saved-result reuse to avoid repeat AI work
+
+## Gemini fallback cost control
+
+Every fallback hop re-sends the whole prompt, so the cascade itself was a token multiplier: four models plus an uncapped output-cap retry each could reach eight full sends of the same payload for one logical call. `geminiClient.js` now bounds that.
+
+- `MAX_PROMPT_SENDS` equals the model-list length. Each transmission counts, including the uncapped output-cap retry, so a single call can never send the prompt more times than there are models. Worst case dropped from 8 to 4.
+- Timeouts scale with the request instead of a flat 10s: `callTimeoutFor()` gives `maxOutputTokens * 10ms`, clamped to 15–60s, and an uncapped retry gets the full 60s. The old flat cap aborted large matcher reports that were still working, then paid to re-send them to the next model.
+- `modelCooldowns` parks a model after a failure so the wasted attempt happens once, not once per job in a scan loop: 6h for 404 / "not found", 5min for 429 / quota, 60s for a timeout. If every model is cooling, the full list is tried anyway rather than failing the feature.
+- The map is module scope, so it is per side-panel document, meaning per browser tab. A dead model costs one wasted attempt in each tab rather than one per call.
+- `MAX_PROMPT_SENDS` deliberately still allows every model a turn, which keeps the token guardrail rule intact — errors surface only once the routes are genuinely exhausted.
+- `400` is still treated as retryable. It is usually a malformed request that will fail identically everywhere, but it can also mean one model rejects a schema feature, so the send budget bounds the cost rather than removing the fallback.
 
 ## Design notes
 
@@ -123,3 +133,7 @@ The preferred end state is:
 ## One-sentence project principle
 
 This project should be resilient, cost-aware, and multi-provider by default, without losing the convenience of a single side-panel workflow.
+
+### Cover Letter & Salary removed
+
+The Cover Letter and Salary features are gone: the `apply` tab, `features/coverLetter.js`, `features/salary.js`, their prompts and Settings boxes, and the bundled jsPDF library. Do not reintroduce them. `refreshApplyButtons()` and `setApplyStatus()` no longer exist, and `customInstructions` now only holds matcher, prep and scan.

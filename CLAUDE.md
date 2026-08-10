@@ -9,13 +9,12 @@ The extension helps a candidate:
 - compare a live job posting against a saved resume
 - generate interview prep question sets for the role
 - bulk-scan a jobs page for likely matches
-- build a cover letter and salary estimate from the matched role
 - save job/application data to Google Sheets and track status
 
 ## Current architecture
 
 - Manifest V3 Chrome extension
-- Side panel UI with separate tabs for matcher, interview prep, scan jobs, cover letter, salary, tracker
+- Side panel UI with separate tabs for matcher, interview prep, scan jobs, tracker, KPI
 - Settings page stored in Chrome local storage
 - Per-tab matcher state stored separately per browser tab
 - Google Sheets sync via Apps Script webhook URL
@@ -31,8 +30,6 @@ The extension helps a candidate:
 - `sidepanel/features/matcher.js` — job-to-resume analysis and report rendering
 - `sidepanel/features/prep.js` — interview prep generation and tracking
 - `sidepanel/features/scan.js` — bulk scanning of jobs pages
-- `sidepanel/features/coverLetter.js` — cover letter generation and PDF export
-- `sidepanel/features/salary.js` — salary estimation
 - `sidepanel/features/tracker.js` — tracked jobs and status management
 - `sidepanel/services/geminiClient.js` — Gemini request / retry / fallback logic
 - `sidepanel/services/aiProviders.js` — non-Google provider adapters

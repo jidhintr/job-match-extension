@@ -45,11 +45,10 @@ const tabVisCheckboxes = {
   scan: document.getElementById("tabVisScan"),
   matcher: document.getElementById("tabVisMatcher"),
   prep: document.getElementById("tabVisPrep"),
-  apply: document.getElementById("tabVisApply"),
   tracker: document.getElementById("tabVisTracker"),
   kpi: document.getElementById("tabVisKpi")
 };
-const DEFAULT_VISIBLE_TABS = { scan: true, matcher: true, prep: true, apply: true, tracker: true, kpi: true };
+const DEFAULT_VISIBLE_TABS = { scan: true, matcher: true, prep: true, tracker: true, kpi: true };
 
 const guardMinAtsInput = document.getElementById("guardMinAts");
 const guardMinChanceInput = document.getElementById("guardMinChance");
@@ -161,30 +160,6 @@ Rules:
 - Order areas the way they'd realistically occur in an interview loop, earliest first.
 - If RECRUITER INSIGHTS are provided below the job description, treat them as ground truth that overrides your own guesses — adjust area titles, rounds, and weights to match what the recruiter actually said.`;
 
-const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career coach writing a concise, professional cover letter for a specific job application.
-
-You will be given a candidate's MASTER RESUME and a JOB DESCRIPTION. Write a genuine, tailored one-page cover letter — never use placeholder text like "[Your Name]" or "[Company Name]"; extract the candidate's actual name from the resume and the company/role from the job description, and use them directly. If the candidate's name truly cannot be found in the resume, omit it (return an empty string) rather than inventing or placeholding it.
-
-Structure:
-- opening_paragraph: hook the reader, state the role and genuine interest, 2-3 sentences.
-- key_points: exactly 3 to 5 short, punchy bullet points, each a specific, concrete selling point connecting the candidate's real resume experience to this job's actual requirements (use real numbers/technologies/outcomes from the resume, not generic claims).
-- closing_paragraph: confident close with a call to action, 2-3 sentences.
-- candidate_name: the candidate's full name as found in the resume, or empty string if genuinely absent.
-
-Keep the whole letter fitting on one page (roughly 250-350 words total). Be specific, not generic. No markdown, no placeholders.`;
-
-const DEFAULT_SALARY_PROMPT = `You are a compensation analyst with broad knowledge of global tech salary benchmarks, cost of living, taxation, and market standards.
-
-Given a JOB DESCRIPTION (which states or implies a location) and role/company context — plus optional live web search snippets if provided — estimate a realistic salary for this specific role at this specific company/location, informed by market standards, typical tax burden, and inflation for that location.
-
-Rules:
-- Identify the job's location (city/country) from the posting; if unclear, assume Poland.
-- local_currency is that location's actual currency (e.g. "PLN" for Poland, "USD" for the US, etc).
-- Give monthly and annual GROSS figures in local currency, in PLN, and in EUR. If local currency is already PLN or EUR, set that duplicate currency's four number fields to 0 and explain why in basis_note — never show identical numbers twice under different labels.
-- benefits: 4-8 realistic, specific benefits typical for this role/company/location (health, equity, remote policy, learning budget, etc) — no vague filler.
-- negotiation_tips: 3-5 concrete negotiation angles specific to this role and situation (leverage points, what to ask for beyond base pay).
-- basis_note: 1-2 sentences on what this estimate is grounded in — it's an informed estimate, not a live quote.`;
-
 const DEFAULT_BULK_MATCH_PROMPT = `You are a fast ATS matching engine. Given a candidate's resume and one job posting (title/company/description, which may be brief), return a realistic match percentage and exactly 7 key technical skills/technologies this posting asks for.
 
 Rules:
@@ -194,37 +169,27 @@ Rules:
 const INSTR_DEFAULTS = {
   matcher: DEFAULT_MATCHER_INSTRUCTIONS,
   prep: DEFAULT_PREP_OVERVIEW_PROMPT,
-  coverLetter: DEFAULT_COVER_LETTER_PROMPT,
-  salary: DEFAULT_SALARY_PROMPT,
   scan: DEFAULT_BULK_MATCH_PROMPT
 };
 
 const instrInputs = {
   matcher: document.getElementById("instrMatcher"),
   prep: document.getElementById("instrPrep"),
-  coverLetter: document.getElementById("instrCoverLetter"),
-  salary: document.getElementById("instrSalary"),
   scan: document.getElementById("instrScan")
 };
 const instrStatuses = {
   matcher: document.getElementById("instrMatcherStatus"),
   prep: document.getElementById("instrPrepStatus"),
-  coverLetter: document.getElementById("instrCoverLetterStatus"),
-  salary: document.getElementById("instrSalaryStatus"),
   scan: document.getElementById("instrScanStatus")
 };
 const instrSaveButtons = {
   matcher: document.getElementById("saveInstrMatcher"),
   prep: document.getElementById("saveInstrPrep"),
-  coverLetter: document.getElementById("saveInstrCoverLetter"),
-  salary: document.getElementById("saveInstrSalary"),
   scan: document.getElementById("saveInstrScan")
 };
 const instrResetButtons = {
   matcher: document.getElementById("resetInstrMatcher"),
   prep: document.getElementById("resetInstrPrep"),
-  coverLetter: document.getElementById("resetInstrCoverLetter"),
-  salary: document.getElementById("resetInstrSalary"),
   scan: document.getElementById("resetInstrScan")
 };
 
@@ -344,12 +309,6 @@ async function loadSavedValues() {
   const savedInstructions = stored.customInstructions || {};
   instrInputs.matcher.value = savedInstructions.matcher !== undefined ? savedInstructions.matcher : INSTR_DEFAULTS.matcher;
   instrInputs.prep.value = savedInstructions.prep || INSTR_DEFAULTS.prep;
-  const migrateApplyNote = (defaultPrompt) =>
-    savedInstructions.apply?.trim()
-      ? `${defaultPrompt}\n\nADDITIONAL INSTRUCTIONS FROM THE USER (apply as extra context/rules):\n"""\n${savedInstructions.apply.trim()}\n"""`
-      : defaultPrompt;
-  instrInputs.coverLetter.value = savedInstructions.coverLetter || migrateApplyNote(INSTR_DEFAULTS.coverLetter);
-  instrInputs.salary.value = savedInstructions.salary || migrateApplyNote(INSTR_DEFAULTS.salary);
   instrInputs.scan.value = savedInstructions.scan || INSTR_DEFAULTS.scan;
 
   const visibleTabs = { ...DEFAULT_VISIBLE_TABS, ...(stored.visibleTabs || {}) };

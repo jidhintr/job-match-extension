@@ -11,8 +11,6 @@ It includes:
 - resume matcher against job descriptions
 - interview prep workflows
 - bulk job scanning
-- cover letter generation
-- salary estimation
 - tracker sync to Google Sheets
 
 ## Important product direction

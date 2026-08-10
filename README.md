@@ -5,7 +5,6 @@ MatchResumer is a Manifest V3 Chrome/Edge extension for job search workflow auto
 - match a live job posting against your master resume
 - generate and improve interview prep question sets for the same job
 - bulk-scan a jobs page for likely matches
-- create a cover letter and salary estimate from a matched role
 - save job and prep data back to Google Sheets and manage tracked applicants
 
 ## Extension overview
@@ -122,41 +121,7 @@ The bulk scan uses Gemini with a custom schema that checks whether a page is a r
 
 This is designed to avoid false positives from company pages, login pages, or generic career pages.
 
-### 4. Cover Letter tab
-
-Purpose: generate a tailored cover letter from the matched job result and the effective resume.
-
-Current behaviors:
-
-- builds a prompt using the job description and resume
-- asks Gemini for a structured JSON response with:
-  - candidate_name
-  - opening_paragraph
-  - key_points
-  - closing_paragraph
-- converts the result into a downloadable PDF letter
-- handles retry and quota messaging if Gemini fails
-
-### 5. Salary tab
-
-Purpose: estimate a salary range for the selected job and company.
-
-Current behaviors:
-
-- reads the current matched job and job description
-- optionally adds live web snippets from Tavily before asking Gemini
-- asks Gemini for a structured compensation object containing:
-  - location
-  - local_currency
-  - monthly_local / annual_local
-  - monthly_pln / annual_pln
-  - monthly_eur / annual_eur
-  - benefits
-  - negotiation_tips
-  - basis_note
-- renders the result in the side panel as salary estimates and context
-
-### 6. Tracker tab
+### 4. Tracker tab
 
 Purpose: track applications and statuses across jobs saved to Google Sheets.
 
@@ -169,7 +134,7 @@ Current behaviors:
 - color-codes statuses based on configuration
 - reuses the same tracker data for duplicate checks when deciding whether a job has already been analyzed
 
-### 7. KPI tab
+### 5. KPI tab
 
 Purpose: analyse the tracked job data as a whole instead of one card at a time.
 
@@ -184,7 +149,7 @@ Current behaviors (phase 1 — Google Sheets only, no AI calls):
 
 Known limit: the sheet records only when a job was saved, not when its status changed, so time-in-stage is out of scope until the phase 2 Gmail cross-check.
 
-### 8. Settings page
+### 6. Settings page
 
 Purpose: configuration and operational control.
 
@@ -196,7 +161,7 @@ Current settings include:
 - visible tab preferences
 - tracker status labels
 - resume matcher report section enablement and ordering
-- custom instructions for each feature (matcher, prep, cover letter, salary, bulk scan)
+- custom instructions for each feature (matcher, prep, bulk scan)
 
 Special note:
 
@@ -246,8 +211,6 @@ The retry logic is implemented in the shared Gemini client and is reused by:
 
 - Resume Matcher
 - Interview Prep
-- Cover Letter
-- Salary
 - Scan Jobs
 
 This makes Gemini a central dependency for the main workflow, even though the app already contains separate provider integrations for the interview-prep scan flow.
@@ -263,8 +226,6 @@ This makes Gemini a central dependency for the main workflow, even though the ap
 - sidepanel/features/bootstrap.js — tab setup, restore state, settings initialization
 - sidepanel/features/matcher.js — resume analysis logic and report rendering
 - sidepanel/features/prep.js — interview prep generation and progress tracking
-- sidepanel/features/coverLetter.js — cover letter generation and PDF export
-- sidepanel/features/salary.js — salary estimation and rendering
 - sidepanel/features/scan.js — bulk job scanning and filtering
 - sidepanel/features/tracker.js — tracker loading and status management
 - sidepanel/features/kpi.js — KPI tab rendering
@@ -291,7 +252,7 @@ Implemented:
 
 - `condenseText()` in `services/promptHelpers.js` runs on every resume, job description, recruiter note and web snippet before it enters a prompt. It strips page chrome (nav links, cookie/privacy/apply-now buttons, footers), collapses whitespace and drops duplicate lines. This is the bulk of the saving and it costs nothing in quality: the boilerplate filter only applies to lines of 60 characters or less, so prose that legitimately mentions those words ("users sign in via SSO", "privacy policy tooling experience") is never stripped. A realistic posting shrinks by roughly half.
 - Character budgets live in one place (`TEXT_LIMITS`), set well above what a real posting needs — `content.js` already caps extraction at 15000 chars, and condensing usually lands a posting far below the 12000-char limit, so truncation should effectively only hit junk-heavy pages. High-frequency paths use the `brief` limits (5000), since bulk scan re-sends the resume once per job on the page.
-- `callGeminiWithFallback` takes a `maxOutputTokens` cap and every feature passes its own budget: bulk scan 600, prep overview/questions 1200, prep consolidation 1800, cover letter 1500, salary 1500. These sit well above the visible output size because thinking tokens count against the cap on the flash models.
+- `callGeminiWithFallback` takes a `maxOutputTokens` cap and every feature passes its own budget: bulk scan 600, prep overview/questions 1200, prep consolidation 1800. These sit well above the visible output size because thinking tokens count against the cap on the flash models.
 - The Resume Matcher budget is computed, not fixed: each entry in `RESUME_SECTIONS` declares its own `maxTokens` and the cap is the sum of the enabled sections plus a base. Disabling sections in Settings lowers the cap automatically.
 - Safety valve: if a response ever does hit the cap (`finishReason: "MAX_TOKENS"`), the same model is retried once with no cap. So a cap that turns out too tight costs one extra request, never a failed or shortened report. It also no longer burns the whole model fallback chain on the same cap.
 - Prep consolidation caps the raw pile at 60 items × 220 chars, so a noisy multi-source scan can't produce an unbounded prompt.

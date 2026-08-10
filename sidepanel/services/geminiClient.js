@@ -5,10 +5,51 @@ const GEMINI_MODELS = [
   "gemini-3.5-flash"
 ];
 
-const GEMINI_CALL_TIMEOUT_MS = 10000;
+const MIN_CALL_TIMEOUT_MS = 15000;
+const MAX_CALL_TIMEOUT_MS = 60000;
+const MS_PER_OUTPUT_TOKEN = 10;
+
+const MAX_PROMPT_SENDS = GEMINI_MODELS.length;
+
+const MODEL_MISSING_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const MODEL_QUOTA_COOLDOWN_MS = 5 * 60 * 1000;
+const MODEL_SLOW_COOLDOWN_MS = 60 * 1000;
+
+const modelCooldowns = new Map();
 
 function geminiUrlFor(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
+
+function callTimeoutFor(maxOutputTokens) {
+  if (!maxOutputTokens) return MAX_CALL_TIMEOUT_MS;
+  return Math.min(MAX_CALL_TIMEOUT_MS, Math.max(MIN_CALL_TIMEOUT_MS, maxOutputTokens * MS_PER_OUTPUT_TOKEN));
+}
+
+function cooldownForError(err) {
+  const message = String(err?.message || "");
+  if (err?.httpStatus === 404 || /not found|no longer available/i.test(message)) return MODEL_MISSING_COOLDOWN_MS;
+  if (err?.httpStatus === 429 || /quota|rate limit|too many requests/i.test(message)) return MODEL_QUOTA_COOLDOWN_MS;
+  if (err?.isTimeout) return MODEL_SLOW_COOLDOWN_MS;
+  return 0;
+}
+
+function noteModelFailure(model, err) {
+  const cooldown = cooldownForError(err);
+  if (cooldown) modelCooldowns.set(model, Date.now() + cooldown);
+}
+
+function isCoolingDown(model) {
+  const until = modelCooldowns.get(model);
+  if (!until) return false;
+  if (Date.now() < until) return true;
+  modelCooldowns.delete(model);
+  return false;
+}
+
+function modelsToTry() {
+  const ready = GEMINI_MODELS.filter((m) => !isCoolingDown(m));
+  return ready.length > 0 ? ready : GEMINI_MODELS;
 }
 
 export function isRetryableError(err) {
@@ -27,8 +68,9 @@ export function formatModelRetryMessage(err, contextLabel = "Gemini") {
 }
 
 async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema, maxOutputTokens) {
+  const timeoutMs = callTimeoutFor(maxOutputTokens);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), GEMINI_CALL_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let response;
   try {
@@ -49,7 +91,7 @@ async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema, 
     });
   } catch (err) {
     if (err.name === "AbortError") {
-      const timeoutErr = new Error(`Gemini ${model} timed out after ${GEMINI_CALL_TIMEOUT_MS / 1000}s.`);
+      const timeoutErr = new Error(`Gemini ${model} timed out after ${Math.round(timeoutMs / 1000)}s.`);
       timeoutErr.isTimeout = true;
       timeoutErr.model = model;
       throw timeoutErr;
@@ -107,35 +149,44 @@ async function callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema, 
 }
 
 export async function callGeminiWithFallback(apiKey, systemPrompt, userPrompt, schema, onModelSwitch, maxOutputTokens) {
+  const models = modelsToTry();
+  let sends = 0;
   let lastErr;
-  for (let i = 0; i < GEMINI_MODELS.length; i++) {
-    const model = GEMINI_MODELS[i];
+
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
     if (i > 0) onModelSwitch?.(model);
 
     let err;
     try {
+      sends++;
       return await callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema, maxOutputTokens);
     } catch (firstErr) {
       err = firstErr;
     }
 
-    if (err.isOutputCap && maxOutputTokens) {
+    if (err.isOutputCap && maxOutputTokens && sends < MAX_PROMPT_SENDS) {
       console.warn(`Gemini ${model} hit the ${maxOutputTokens}-token output cap — retrying uncapped.`);
       try {
+        sends++;
         return await callGeminiModel(apiKey, model, systemPrompt, userPrompt, schema);
       } catch (retryErr) {
         err = retryErr;
       }
     }
 
+    noteModelFailure(model, err);
     lastErr = err;
     lastErr.model = model;
-    const isLastModel = i === GEMINI_MODELS.length - 1;
-    if (isRetryableError(err) && !isLastModel) {
-      console.warn(`Gemini ${model} failed (${err.message}) — falling back to ${GEMINI_MODELS[i + 1]}.`);
+
+    const hasBudget = sends < MAX_PROMPT_SENDS;
+    const isLastModel = i === models.length - 1;
+    if (isRetryableError(err) && !isLastModel && hasBudget) {
+      console.warn(`Gemini ${model} failed (${err.message}) — falling back to ${models[i + 1]}.`);
       continue;
     }
     throw err;
   }
+
   throw lastErr;
 }

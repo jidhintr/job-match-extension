@@ -28,7 +28,6 @@ import {
   effectiveResume,
   hasUsableResume,
   setStatus,
-  refreshApplyButtons,
   persistTabSessionState
 } from "./bootstrap.js";
 
@@ -589,7 +588,6 @@ async function runAnalysis() {
     setStatus(message, "err");
   } finally {
     setBusy(false);
-    refreshApplyButtons();
   }
 }
 

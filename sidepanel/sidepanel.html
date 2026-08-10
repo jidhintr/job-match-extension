@@ -19,7 +19,6 @@
       <button class="tab-btn" id="tabBtnScan" data-tab="scan" type="button">Scan Jobs</button>
       <button class="tab-btn active" id="tabBtnMatcher" data-tab="matcher" type="button">Matcher</button>
       <button class="tab-btn" id="tabBtnPrep" data-tab="prep" type="button">Interview Prep</button>
-      <button class="tab-btn" id="tabBtnApply" data-tab="apply" type="button">Cover Letter &amp; Salary</button>
       <button class="tab-btn" id="tabBtnTracker" data-tab="tracker" type="button">Tracker</button>
       <button class="tab-btn" id="tabBtnKpi" data-tab="kpi" type="button">KPI</button>
     </div>
@@ -355,19 +354,6 @@
         <div id="prepAreasList" class="prep-areas-list"></div>
       </div>
 
-      <div id="applyView" class="tab-view hidden">
-        <div class="prep-input-actions top-actions">
-          <button id="coverLetterBtn" class="primary-btn full-width" type="button" disabled>📄 Cover Letter</button>
-          <button id="checkSalaryBtn" class="secondary-btn full-width" type="button" disabled>💰 Check Salary</button>
-        </div>
-        <div id="applyStatusLine" class="status-line"></div>
-
-        <details id="salaryResult" class="prep-source-picker hidden" open>
-          <summary>Salary Estimate</summary>
-          <div id="salaryResultBody" class="prep-source-options"></div>
-        </details>
-      </div>
-
       <div id="scanView" class="tab-view hidden">
         <div class="prep-input-actions top-actions">
           <button id="scanAndFilterBtn" class="primary-btn full-width" type="button" disabled>🔍 Scan and Filter</button>
@@ -445,7 +431,6 @@
     </div>
   </div>
 
-  <script src="../lib/jspdf/jspdf.umd.min.js"></script>
   <script type="module" src="sidepanel.js"></script>
 </body>
 </html>

@@ -18,7 +18,6 @@ import {
   resumeSourceText,
   clearResumeOverrideBtn,
   statusLine,
-  applyStatusLine,
   drawerToggle,
   drawerBody,
   drawerChevron,
@@ -28,8 +27,6 @@ import {
   tabButtons,
   tabViewsByName,
   tabButtonsByName,
-  coverLetterBtn,
-  checkSalaryBtn,
   scanAndFilterBtn,
   prepSourcePickerSummary,
   sourceCheckboxes
@@ -50,7 +47,6 @@ export function hasUsableResume() {
 }
 
 export const setStatus = createStatusLine(statusLine);
-export const setApplyStatus = createStatusLine(applyStatusLine);
 
 function getScopedTabIdFromUrl() {
   const raw = new URLSearchParams(location.search).get("tabId");
@@ -88,7 +84,6 @@ async function restoreTabState() {
   } else {
     await tryLoadSavedAnalysisForCurrentTab();
   }
-  refreshApplyButtons();
 }
 
 async function tryLoadSavedAnalysisForCurrentTab() {
@@ -225,7 +220,6 @@ setupBannerBtn.addEventListener("click", () => chrome.runtime.openOptionsPage())
 function activateTab(target) {
   tabButtons.forEach((b) => b.classList.toggle("active", b.dataset.tab === target));
   Object.entries(tabViewsByName).forEach(([name, view]) => view.classList.toggle("hidden", name !== target));
-  if (target === "apply") refreshApplyButtons();
   if (target === "scan") refreshScanButton();
   if (target === "tracker") loadTrackerIfNeeded();
   if (target === "kpi") refreshKpiTab();
@@ -260,7 +254,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 function applyTabVisibility(visibleTabs) {
-  const visible = { scan: true, matcher: true, prep: true, apply: true, tracker: true, kpi: true, ...(visibleTabs || {}) };
+  const visible = { scan: true, matcher: true, prep: true, tracker: true, kpi: true, ...(visibleTabs || {}) };
   const anyVisible = Object.values(visible).some(Boolean);
 
   Object.entries(tabButtonsByName).forEach(([name, btn]) => {
@@ -277,15 +271,6 @@ function applyTabVisibility(visibleTabs) {
 function refreshScanButton() {
   scanAndFilterBtn.disabled = !(state.settings.apiKey && effectiveResume());
   scanAndFilterBtn.title = scanAndFilterBtn.disabled ? "Add your Gemini API key and resume in Settings first." : "";
-}
-
-export function refreshApplyButtons() {
-  const ready = !!(state.settings.apiKey && state.matcher.lastResult && state.matcher.lastJobText && effectiveResume());
-  coverLetterBtn.disabled = !ready;
-  checkSalaryBtn.disabled = !ready;
-  const title = ready ? "" : "Run Resume Matcher analysis on this job first.";
-  coverLetterBtn.title = title;
-  checkSalaryBtn.title = title;
 }
 
 onSettingsChanged((changes) => {

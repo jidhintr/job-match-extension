@@ -15,7 +15,7 @@ export const state = {
     perplexityModel: "",
     prepSourceSelection: { gemini: true, tavily: true, deepseek: true, openai: true, perplexity: true },
     resumeSectionOrder: [],
-    customInstructions: { matcher: DEFAULT_MATCHER_INSTRUCTIONS, prep: "", coverLetter: "", salary: "", scan: "" },
+    customInstructions: { matcher: DEFAULT_MATCHER_INSTRUCTIONS, prep: "", scan: "" },
     trackerStatusOptions: [],
     cacheTtlHours: 2,
     guardMinAts: 50,
