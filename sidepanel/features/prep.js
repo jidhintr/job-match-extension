@@ -82,7 +82,7 @@ Your job:
 1. Extract the actual interview questions relevant to this specific INTERVIEW AREA. Pull real questions out of prose snippets where present.
 2. Deduplicate aggressively — collapse near-identical questions into one clean canonical wording.
 3. Drop anything off-topic for the area, generic filler, or too vague to practice.
-4. For each surviving question assign: category (one of exactly "Behavioral", "System Design", "Coding", or "Domain"), difficulty (one of exactly "Easy", "Medium", or "Hard"), and frequency (one of exactly "High", "Medium", or "Low" — how commonly this type of question appears to be reported for this area/company).
+4. For each surviving question assign: category (one of exactly "Behavioral", "System Design", "Coding", "Architecture", "Leadership", or "Domain" — use Leadership for people management, hiring and org questions, and Architecture for platform, trade-off and technical-strategy questions that go beyond a single system design exercise), difficulty (one of exactly "Easy", "Medium", or "Hard"), and frequency (one of exactly "High", "Medium", or "Low" — how commonly this type of question appears to be reported for this area/company).
 5. Return 6 to 12 of the strongest, most likely questions, ordered highest-frequency first.
 
 Respond with ONLY a single valid JSON object matching the schema. No markdown, no commentary.`;
@@ -96,7 +96,7 @@ const PREP_CONSOLIDATION_SCHEMA = {
         type: "OBJECT",
         properties: {
           question: { type: "STRING" },
-          category: { type: "STRING", enum: ["Behavioral", "System Design", "Coding", "Domain"] },
+          category: { type: "STRING", enum: ["Behavioral", "System Design", "Coding", "Architecture", "Leadership", "Domain"] },
           difficulty: { type: "STRING", enum: ["Easy", "Medium", "Hard"] },
           frequency: { type: "STRING", enum: ["High", "Medium", "Low"] }
         },
@@ -297,7 +297,9 @@ function renderQuestionsList(area, listEl, masterCheckboxEl) {
 }
 
 function buildAnswerPrompt(questionText) {
-  return `Answer this interview question exactly like a lead engineer would in a real interview — cover every edge case and possibility, don't leave anything out, and explain your reasoning clearly the way you'd walk an interviewer through it out loud:\n\n"${questionText}"`;
+  const role = state.matcher.lastResult?.job_title?.trim();
+  const persona = role ? `a strong candidate interviewing for ${role}` : "a strong candidate for this role";
+  return `Answer this interview question exactly like ${persona} would in a real interview, pitched at the level that role actually expects — cover every edge case and possibility, don't leave anything out, and explain your reasoning clearly the way you'd walk an interviewer through it out loud:\n\n"${questionText}"`;
 }
 
 function makeAnswerButton(questionText) {

@@ -72,6 +72,23 @@ The bulk scan used to spend a full AI call on every list entry, including cookie
 - Skipped entries are counted and reported in the scan status line so over-rejection is visible rather than silent.
 - The job page is still opened to get its text, so the saving is the AI call and its round trip, not the tab fetch.
 
+## Cached candidate profile (scan only)
+
+Bulk scan re-sent the same 5000-char resume on every job, so a 25-job scan spent roughly 31k tokens repeating one document. `candidateProfile.js` replaces that with a ~450-char fact block generated once and cached in `chrome.storage.local`.
+
+- It is an **extraction, not a summary**. The prompt demands every technology, framework, tool and language named anywhere in the resume, copied as written, including single mentions. Narrative prose is dropped because it does not move a 0-100 match; a one-off niche skill would, so losing one is treated as a failure.
+- `seniority` takes the resume's own wording and explicitly covers Staff, Principal, Architect, Engineering Manager and Director. Forcing every candidate onto an individual-contributor ladder would under-score management and architecture roles.
+- `leadership` captures people management, mentoring, hiring, delivery and architecture ownership with team sizes. Without it the profile is all-IC signal and Staff / Architect / EM postings match poorly, since their requirements are mostly non-coding.
+- Scan only. Matcher still receives the full resume, because its report quotes and reasons about actual wording.
+- The cache key is `PROFILE_VERSION` plus a djb2 hash and the length of the condensed resume, so editing the resume, switching to a per-tab uploaded resume, or changing the schema all invalidate it automatically.
+- Any failure falls back to the previously condensed resume, so a profile problem costs tokens rather than breaking the scan.
+- `renderProfile()` returns an empty string when the model gives back no technologies, which routes the caller to the same fallback instead of sending a hollow profile.
+- The generating call is charged once per resume version, so it pays for itself from the second scanned job onward.
+
+**Not verified against live results.** The design preserves matchable signal by construction, but no A/B of scan scores has been run. If scores drift, compare a profile-based scan against a full-resume scan on the same listing page before tuning further.
+
+**Rejected: a two-stage scan then deep-scan funnel.** It already exists as Scan Jobs then Matcher, and it cannot protect a cheap first pass — a funnel's recall is capped by its first stage, so anything wrongly scored low in step one is never offered for step two.
+
 ## Design notes
 
 - Use Sheets as a cache and status source when a given job URL has already been analyzed.

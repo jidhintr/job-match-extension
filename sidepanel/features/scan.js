@@ -4,6 +4,7 @@ import { callGeminiWithFallback } from "../services/geminiClient.js";
 import { postToSheets } from "../services/sheetsSync.js";
 import { scanJobListOnActiveTab, extractJobTextFromUrl } from "../services/tabMessaging.js";
 import { buildEditablePrompt, condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
+import { getCandidateProfile } from "../services/candidateProfile.js";
 import { makeQBadge } from "../ui/renderHelpers.js";
 import { createStatusLine } from "../ui/statusLine.js";
 import { scanAndFilterBtn, saveScanBtn, scanStatusLine, scanResultsList } from "../ui/dom.js";
@@ -59,7 +60,16 @@ async function runScanAndFilter() {
       return;
     }
 
-    const resume = condenseText(effectiveResume(), TEXT_LIMITS.resumeBrief);
+    let resume = condenseText(effectiveResume(), TEXT_LIMITS.resumeBrief);
+    try {
+      const profile = await getCandidateProfile(state.settings.apiKey, effectiveResume(), () => {
+        setScanStatus("Indexing your resume once for this scan and the next ones...");
+      });
+      if (profile) resume = profile;
+    } catch (err) {
+      console.warn(`Scan: using the full resume, profile step failed — ${err.message}`);
+    }
+
     let skippedCount = 0;
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
