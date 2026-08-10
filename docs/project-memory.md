@@ -78,11 +78,19 @@ The preferred end state is:
 ### Auto-track on analyse
 
 - The matcher writes the row to Sheets itself the moment an analysis succeeds (`autoSaveAnalysis()` in `matcher.js`), so nothing analysed goes untracked even if the user walks away from a bad score.
-- `ANALYSED_STATUS` ("Analysed") in `tracker.js` is a reserved system status: always first in `enabledStatuses()`, has its own colour outside `STATUS_COLOR_PALETTE`, is stripped from any user-configured list by `sanitizeTrackerStatusOptions()` in both `tracker.js` and `options.js`, and does not count toward `MAX_TRACKER_STATUSES`.
+- `ANALYSED_STATUS` ("Analysed") in `tracker.js` is a reserved system status: always first in `enabledStatuses()`, has its own pink outside the semantic colour rules, is stripped from any user-configured list by `sanitizeTrackerStatusOptions()` in both `tracker.js` and `options.js`, and does not count toward `MAX_TRACKER_STATUSES`.
 - The payload sends `status` only when the URL has no existing row, plus `defaultStatus` always. `handleJobUpsert()` applies `defaultStatus` on append only, so re-analysing a job the user already moved to Applied/Rejected refreshes its scores without resetting its status. Sending both means an un-redeployed Apps Script still stamps Analysed instead of falling back to Pending.
 - A failed auto-save never fails the analysis — the report stays on screen and `savedToSheets` resets so the next Analyze retries the write.
 - Any write to the sheet (analysis auto-save, scan save) fires `tracker:refresh`, which runs `refreshTrackerFromSheet()`: clear the persisted cache, drop the in-memory copy, refetch, re-render the Tracker, then fire `tracker:updated` so the KPI tab recomputes. It is never awaited by the analysis flow — the report renders first and the matcher status line updates when the refresh lands.
 - `warmTrackerCache()` runs at the end of `init()` so the Tracker tab has data on first open without a visible load.
+
+### Status colours
+
+- Statuses are free text, so `colorForStatus()` in `tracker.js` resolves colour by meaning, not by list position. Renaming or reordering a status no longer changes its colour.
+- `STATUS_COLOR_RULES` matches substrings in this order: kee → light saffron, ignore/withdraw/archive → grey, reject/declined/ghosted → red, pending/waiting/on hold → yellow, applied/submitted → blue. First match wins, which is why "Rejected after tech round" reads red rather than green.
+- Green is reserved for real interview progression. `PROGRESS_KEYWORDS` (recruiter, screen, call, interview, round, tech, coding, hiring manager, system design, engineering manager, onsite, final, offer, hr, …) only applies after the rules above miss, and each matching status takes the next shade from `PROGRESS_GREENS`, light to deep, in the order the statuses appear in Settings. Ordering the list by stage therefore gives a natural light-to-deep progression.
+- Anything unmatched falls back to `NEUTRAL_STATUS_COLOR` grey, including the default "New".
+- Do not put green in `STATUS_COLOR_RULES` or in any other status palette; a green card must always mean forward progress.
 ### Save guard
 
 `sidepanel/features/saveGuard.js` gates the auto-save behind a Save/Discard modal. Rules, in precedence order:

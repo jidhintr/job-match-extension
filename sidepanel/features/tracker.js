@@ -24,12 +24,23 @@ import {
 const setTrackerStatus = createStatusLine(trackerStatusLine);
 
 const ANALYSED_STATUS_COLOR = "#ec4899";
+const NEUTRAL_STATUS_COLOR = "#8b90a0";
 
-const STATUS_COLOR_PALETTE = [
-  "#4c8dff", "#d99a3d", "#34c07b", "#e5484d", "#8b5cf6",
-  "#22d3ee", "#f97316", "#a3e635", "#f472b6", "#818cf8"
+const PROGRESS_GREENS = ["#bbf7d0", "#86efac", "#4ade80", "#22c55e", "#16a34a", "#0f9d58"];
+
+const PROGRESS_KEYWORDS = [
+  "recruiter", "screen", "call", "interview", "round", "tech", "coding", "assessment",
+  "hiring manager", "engineering manager", "system design", "architect", "panel",
+  "onsite", "on-site", "final", "offer", "hr"
 ];
-const UNKNOWN_STATUS_COLOR = "#8b90a0";
+
+const STATUS_COLOR_RULES = [
+  { match: ["kee"], color: "#fbd38d" },
+  { match: ["ignore", "skip", "archiv", "withdraw", "not interested", "closed"], color: NEUTRAL_STATUS_COLOR },
+  { match: ["reject", "declin", "ghost", "no response", "unsuccessful"], color: "#e5484d" },
+  { match: ["pending", "waiting", "on hold", "follow up", "in review"], color: "#e0b341" },
+  { match: ["applied", "apply", "submitted"], color: "#4c8dff" }
+];
 
 export function configuredStatuses() {
   return state.settings.trackerStatusOptions && state.settings.trackerStatusOptions.length > 0
@@ -68,10 +79,27 @@ function statusOptionsForItem(currentStatus) {
   return enabled.includes(currentStatus) ? enabled : [...enabled, currentStatus];
 }
 
+function ruleColorFor(label) {
+  const key = String(label || "").trim().toLowerCase();
+  const rule = STATUS_COLOR_RULES.find((r) => r.match.some((m) => key.includes(m)));
+  return rule ? rule.color : null;
+}
+
+function isProgressStatus(label) {
+  const key = String(label || "").trim().toLowerCase();
+  return !ruleColorFor(key) && PROGRESS_KEYWORDS.some((k) => key.includes(k));
+}
+
+function progressStatuses() {
+  return allStatuses().filter((s) => s !== ANALYSED_STATUS && isProgressStatus(s));
+}
+
 export function colorForStatus(label) {
   if (label === ANALYSED_STATUS) return ANALYSED_STATUS_COLOR;
-  const idx = allStatuses().filter((s) => s !== ANALYSED_STATUS).indexOf(label);
-  return idx >= 0 ? STATUS_COLOR_PALETTE[idx % STATUS_COLOR_PALETTE.length] : UNKNOWN_STATUS_COLOR;
+  const ruleColor = ruleColorFor(label);
+  if (ruleColor) return ruleColor;
+  const idx = progressStatuses().indexOf(label);
+  return idx >= 0 ? PROGRESS_GREENS[idx % PROGRESS_GREENS.length] : NEUTRAL_STATUS_COLOR;
 }
 
 function hexToRgba(hex, alpha) {
@@ -218,11 +246,27 @@ export async function findSavedJobByUrl(jobUrl) {
   }
 }
 
+const TEXT_SORT_FIELDS = { date: "dateTime", company: "companyName", title: "jobTitle", status: "status" };
+const SCORE_SORT_FIELDS = { ats: "atsScore", chance: "interviewChance" };
+
+function scoreValue(raw) {
+  if (raw === "" || raw == null) return -1;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : -1;
+}
+
 function sortItems(items) {
   const [key, dir] = state.tracker.sortBy.split("-");
-  const fieldBySortKey = { date: "dateTime", company: "companyName", title: "jobTitle", status: "status" };
-  const field = fieldBySortKey[key] || "dateTime";
-  const sorted = [...items].sort((a, b) => String(a[field] || "").localeCompare(String(b[field] || "")));
+  const scoreField = SCORE_SORT_FIELDS[key];
+  const sorted = [...items];
+
+  if (scoreField) {
+    sorted.sort((a, b) => scoreValue(a[scoreField]) - scoreValue(b[scoreField]));
+  } else {
+    const field = TEXT_SORT_FIELDS[key] || "dateTime";
+    sorted.sort((a, b) => String(a[field] || "").localeCompare(String(b[field] || "")));
+  }
+
   return dir === "desc" ? sorted.reverse() : sorted;
 }
 
