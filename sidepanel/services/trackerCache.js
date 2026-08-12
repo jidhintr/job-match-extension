@@ -2,6 +2,7 @@ import { sanitizeCacheTtlHours } from "../../shared/settingsSchema.js";
 export { sanitizeCacheTtlHours };
 
 const CACHE_KEY = "trackerCache";
+const WRITER_ID = crypto.randomUUID();
 
 export async function readTrackerCache() {
   const stored = await chrome.storage.local.get(CACHE_KEY);
@@ -11,8 +12,17 @@ export async function readTrackerCache() {
 }
 
 export async function writeTrackerCache(items, savedAt = Date.now()) {
-  await chrome.storage.local.set({ [CACHE_KEY]: { items, savedAt } });
+  await chrome.storage.local.set({ [CACHE_KEY]: { items, savedAt, writerId: WRITER_ID } });
   return savedAt;
+}
+
+export function onTrackerCacheChanged(callback) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !changes[CACHE_KEY]) return;
+    const cache = changes[CACHE_KEY].newValue;
+    if (!cache || !Array.isArray(cache.items) || cache.writerId === WRITER_ID) return;
+    callback(cache);
+  });
 }
 
 export async function clearTrackerCache() {

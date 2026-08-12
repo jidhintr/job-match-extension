@@ -1,7 +1,7 @@
 import { state } from "../state/store.js";
 import { fetchFromSheets, postToSheets } from "../services/sheetsSync.js";
 import { createStatusLine } from "../ui/statusLine.js";
-import { splitCsv, parseSheetDate, safeHttpUrl, withinDays } from "../ui/format.js";
+import { splitCsv, parseSheetDate, safeHttpUrl, withinDays, canonicalJobUrl } from "../ui/format.js";
 import {
   ANALYSED_STATUS,
   DEFAULT_TRACKER_STATUS_OPTIONS,
@@ -9,7 +9,7 @@ import {
   sanitizeTrackerStatusOptions
 } from "../../shared/settingsSchema.js";
 export { ANALYSED_STATUS, MAX_TRACKER_STATUSES, sanitizeTrackerStatusOptions };
-import { readTrackerCache, writeTrackerCache, clearTrackerCache, isCacheFresh, cacheAgeLabel } from "../services/trackerCache.js";
+import { readTrackerCache, writeTrackerCache, clearTrackerCache, isCacheFresh, cacheAgeLabel, onTrackerCacheChanged } from "../services/trackerCache.js";
 import {
   trackerSearchInput,
   trackerStatusFilter,
@@ -114,10 +114,26 @@ export function paintStatusChip(el, status) {
   el.style.borderColor = hexToRgba(color, 0.35);
 }
 
+function isUntouchedStatus(item) {
+  const status = String(item.status || "").trim().toLowerCase();
+  return status === "" || status === "pending" || status === ANALYSED_STATUS.toLowerCase();
+}
+
+export function findTrackedItemByUrl(jobUrl) {
+  const target = canonicalJobUrl(jobUrl);
+  if (!target) return null;
+
+  const matches = state.tracker.items.filter((it) => canonicalJobUrl(it.jobUrl) === target);
+  if (matches.length < 2) return matches[0] || null;
+
+  return matches.slice().sort((a, b) =>
+    (isUntouchedStatus(a) ? 1 : 0) - (isUntouchedStatus(b) ? 1 : 0) ||
+    (parseSheetDate(b.dateTime)?.getTime() || 0) - (parseSheetDate(a.dateTime)?.getTime() || 0)
+  )[0];
+}
+
 export function trackedStatusForUrl(jobUrl) {
-  if (!jobUrl) return "";
-  const item = state.tracker.items.find((it) => it.jobUrl === jobUrl);
-  return String(item?.status || "").trim();
+  return String(findTrackedItemByUrl(jobUrl)?.status || "").trim();
 }
 
 function applyStatusColor(item, selectEl, cardEl) {
@@ -178,7 +194,7 @@ export async function refreshTrackerFromSheet() {
 }
 
 export function warmTrackerCache() {
-  if (!state.settings.sheetsWebhookUrl || state.tracker.loaded) return;
+  if (!state.settings.sheetsWebhookUrl) return;
   ensureTrackerItems()
     .then(() => {
       refreshTrackerStatusOptions();
@@ -187,6 +203,14 @@ export function warmTrackerCache() {
     .catch((err) => console.error("Tracker cache warm-up failed.", err));
 }
 
+onTrackerCacheChanged((cache) => {
+  state.tracker.items = cache.items;
+  state.tracker.cachedAt = cache.savedAt;
+  state.tracker.loaded = true;
+  refreshTrackerStatusOptions();
+  notifyTrackerUpdated();
+});
+
 function formatDateTime(value) {
   const d = parseSheetDate(value);
   if (!d) return value ? String(value) : "—";
@@ -194,7 +218,7 @@ function formatDateTime(value) {
 }
 
 async function loadTrackerData({ force = false } = {}) {
-  if (state.tracker.loaded && !force) {
+  if (!force && loadedItemsStillFresh()) {
     refreshTrackerStatusOptions();
     return;
   }
@@ -219,15 +243,19 @@ export function loadTrackerIfNeeded() {
 
 let loadQueue = Promise.resolve();
 
+function loadedItemsStillFresh() {
+  return state.tracker.loaded && isCacheFresh({ savedAt: state.tracker.cachedAt }, state.settings.cacheTtlHours);
+}
+
 export function ensureTrackerItems({ force = false } = {}) {
-  if (state.tracker.loaded && !force) return Promise.resolve(state.tracker.items);
+  if (!force && loadedItemsStillFresh()) return Promise.resolve(state.tracker.items);
   const run = loadQueue.then(() => loadTrackerItems(force), () => loadTrackerItems(force));
   loadQueue = run.catch(() => {});
   return run;
 }
 
 async function loadTrackerItems(force) {
-  if (state.tracker.loaded && !force) return state.tracker.items;
+  if (!force && loadedItemsStillFresh()) return state.tracker.items;
 
   if (!force) {
     const cache = await readTrackerCache();
@@ -260,8 +288,8 @@ export function trackerSourceLabel() {
 export async function findSavedJobByUrl(jobUrl) {
   if (!jobUrl || !state.settings.sheetsWebhookUrl) return null;
   try {
-    const items = await ensureTrackerItems();
-    return items.find((it) => it.jobUrl === jobUrl) || null;
+    await ensureTrackerItems();
+    return findTrackedItemByUrl(jobUrl);
   } catch (err) {
     console.error("Could not check Sheets for an existing analysis.", err);
     return null;

@@ -1,4 +1,4 @@
-import { safeHttpUrl } from "../ui/format.js";
+import { safeHttpUrl, canonicalJobUrl } from "../ui/format.js";
 import { state } from "../state/store.js";
 import { callGeminiWithFallback } from "../services/geminiClient.js";
 import { postToSheets } from "../services/sheetsSync.js";
@@ -191,7 +191,7 @@ async function saveScanResultsToSheet() {
   try {
     for (const job of state.scan.results) {
       const payload = {
-        jobUrl: job.url,
+        jobUrl: canonicalJobUrl(job.url) || job.url,
         dateTime,
         companyName: job.company,
         jobTitle: job.title,

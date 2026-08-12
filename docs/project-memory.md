@@ -100,6 +100,29 @@ Bulk scan re-sent the same 5000-char resume on every job, so a 25-job scan spent
 - On session restore the tracker may not be loaded yet, so the badge starts hidden and appears when warm-up lands. It is absent rather than wrong.
 - Display only. Changing status still happens in Tracker, so there is one write path to the sheet.
 
+## Tracker cache invalidation
+
+Two separate defects made the Matcher badge disagree with the Tracker and with the sheet.
+
+**TTL was only ever consulted on the first load.** `ensureTrackerItems()`, `loadTrackerItems()` and `loadTrackerData()` all gated on `state.tracker.loaded` alone, and nothing ever set it back to false. Once a side panel document had loaded items, it served that in-memory copy for as long as the document lived, so `cacheTtlHours` had no effect after the first read. All three now gate on `loadedItemsStillFresh()`, which re-checks `state.tracker.cachedAt` against the TTL on every call. A `cachedAt` of null is treated as stale, so an unstamped copy is never trusted.
+
+**There is one side panel document per browser tab, each with its own `state`.** Changing a status in one tab's panel wrote to the shared `chrome.storage.local` cache, but every other open panel kept its own stale array in memory and never re-read it. `onTrackerCacheChanged()` in `trackerCache.js` now watches the storage key and pushes the new items into `state`, then fires `tracker:updated` so the tracker list, KPI charts and Matcher badge all repaint.
+
+- Each document stamps its writes with a `WRITER_ID`, and the listener ignores its own, so a status change repaints the other panels without the originating one re-rendering the list under the user's cursor.
+- `clearTrackerCache()` fires a change event with no `newValue`, which the guard drops — a clear is always followed by a fetch that writes fresh items anyway.
+- Cache entries written before this change carry no `writerId`, so they read as foreign and are applied. That is the safe direction.
+- `warmTrackerCache()` no longer early-returns when items are already loaded. It delegates freshness to `ensureTrackerItems()` and always notifies, which is what paints the Matcher badge on panel open.
+
+## Job URL identity
+
+The sheet is keyed on the exact URL string (`findRowByJobUrl` in `google-apps-script.js` does a trimmed string compare), but the two writers produce different strings for the same job. Scan sends the listing anchor's href, Matcher sends `window.location.href` from the content script. A trailing slash, a `utm_` parameter, `www.`, or a `#` fragment was enough to create a second row, so one job could sit in the sheet twice with different statuses, and an exact-match lookup would return whichever row it happened to hit.
+
+- `canonicalJobUrl()` in `format.js` forces https, drops `www.`, drops the hash, strips tracking parameters (`utm_*`, `fbclid`, `gclid`, `trk`, `refId`, `ref`, `source`, …) and removes trailing slashes. Real identifying query parameters such as `?id=12` are preserved, so distinct jobs stay distinct.
+- All lookups compare canonical to canonical via `findTrackedItemByUrl()`. Nothing depends on the raw string matching any more.
+- When several rows canonicalise to the same job, an actively chosen status wins over an untouched one (`""`, `Pending`, `Analysed`); ties break on the newest `dateTime`. A stale scan-created `Pending` therefore never masks the `Applied` the user set by hand.
+- Writes avoid creating further duplicates: `buildSheetPayload()` reuses the existing row's exact `jobUrl` when a canonical match is found, so the Apps Script still updates that row, and only genuinely new rows get a canonical key. Scan writes canonical keys directly.
+- Rows that already exist in duplicate are not merged. The lookup rules make the UI correct, but the sheet stays dirty until cleaned by hand.
+
 ## Design notes
 
 - Use Sheets as a cache and status source when a given job URL has already been analyzed.

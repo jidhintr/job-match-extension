@@ -30,6 +30,27 @@ export function safeHttpUrl(value) {
   }
 }
 
+const TRACKING_PARAM =
+  /^(utm_.*|ga_.*|fbclid|gclid|msclkid|mc_cid|mc_eid|igshid|ref|referrer|source|src|trk|trackingid|origin|position|refid|pagenum|lipi|eBP)$/i;
+
+export function canonicalJobUrl(value) {
+  const href = safeHttpUrl(value);
+  if (!href) return "";
+  try {
+    const url = new URL(href);
+    url.protocol = "https:";
+    url.hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
+    url.hash = "";
+    [...url.searchParams.keys()].forEach((key) => {
+      if (TRACKING_PARAM.test(key)) url.searchParams.delete(key);
+    });
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
 export function withinDays(value, days) {
   const d = parseSheetDate(value);
   if (!d) return false;

@@ -4,7 +4,7 @@ import { postToSheets } from "../services/sheetsSync.js";
 import { condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
 import { extractJobTextFromActiveTab } from "../services/tabMessaging.js";
 import { fillList, fillPills, fillTechGapTable } from "../ui/renderHelpers.js";
-import { clampScore, splitCsv } from "../ui/format.js";
+import { clampScore, splitCsv, canonicalJobUrl } from "../ui/format.js";
 import { findSavedJobByUrl, refreshTrackerFromSheet, paintStatusChip, trackedStatusForUrl, ANALYSED_STATUS } from "./tracker.js";
 import { evaluateSaveGuard, confirmSave } from "./saveGuard.js";
 import {
@@ -604,7 +604,7 @@ async function runAnalysis() {
   }
 }
 
-function buildSheetPayload(isNewRow) {
+function buildSheetPayload(existing) {
   const addSkills = state.matcher.lastResult.resume_optimization?.add_skills;
   const removeSkills = state.matcher.lastResult.resume_optimization?.remove_skills;
 
@@ -618,8 +618,8 @@ function buildSheetPayload(isNewRow) {
     missingSkills: Array.isArray(state.matcher.lastResult.missing_skills) ? state.matcher.lastResult.missing_skills.join(", ") : "",
     addSkills: Array.isArray(addSkills) ? addSkills.join(", ") : "",
     removeSkills: Array.isArray(removeSkills) ? removeSkills.join(", ") : "",
-    jobUrl: state.matcher.lastJobUrl || "",
-    ...(isNewRow ? { status: ANALYSED_STATUS } : {}),
+    jobUrl: existing?.jobUrl || canonicalJobUrl(state.matcher.lastJobUrl) || state.matcher.lastJobUrl || "",
+    ...(existing ? {} : { status: ANALYSED_STATUS }),
     defaultStatus: ANALYSED_STATUS
   };
 }
@@ -640,7 +640,7 @@ async function autoSaveAnalysis() {
 
   try {
     const existing = await findSavedJobByUrl(state.matcher.lastJobUrl);
-    await postToSheets(state.settings.sheetsWebhookUrl, buildSheetPayload(!existing));
+    await postToSheets(state.settings.sheetsWebhookUrl, buildSheetPayload(existing));
     state.matcher.savedToSheets = true;
 
     const savedLabel = existing ? "Tracker row updated" : `Tracked as ${ANALYSED_STATUS}`;
