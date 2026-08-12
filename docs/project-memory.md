@@ -89,6 +89,17 @@ Bulk scan re-sent the same 5000-char resume on every job, so a 25-job scan spent
 
 **Rejected: a two-stage scan then deep-scan funnel.** It already exists as Scan Jobs then Matcher, and it cannot protect a cheap first pass — a funnel's recall is capped by its first stage, so anything wrongly scored low in step one is never offered for step two.
 
+## Tracked status on the Matcher tab
+
+`#jobStatusBadge` sits under the gauges inside the job identity card and shows the job's tracker status, so a saved job's state is visible without switching tabs.
+
+- The status is read live from `state.tracker.items` by `lastJobUrl` via `trackedStatusForUrl()`, never copied into `lastResult`. Copying it would persist into per-tab session state and go stale the moment the status changed elsewhere.
+- Colour comes from `paintStatusChip()`, which reuses `colorForStatus()` and `hexToRgba()` in `tracker.js`, so the badge, the tracker card and the KPI charts can never disagree about what a status looks like.
+- `tryLoadSavedAnalysisForCurrentTab()` assigns `lastJobUrl` before calling `renderReport()`. The old order rendered first, which would leave the badge blank on the sheet-restore path.
+- `notifyTrackerUpdated()` now fires from `refreshTrackerFromSheet()`, `warmTrackerCache()` and a successful `changeStatus()`. Only the first of those dispatched before, so the KPI tab was also silently stale after a status change and after warm-up.
+- On session restore the tracker may not be loaded yet, so the badge starts hidden and appears when warm-up lands. It is absent rather than wrong.
+- Display only. Changing status still happens in Tracker, so there is one write path to the sheet.
+
 ## Design notes
 
 - Use Sheets as a cache and status source when a given job URL has already been analyzed.

@@ -42,6 +42,7 @@ export const chanceGauge = {
 export const jobIdentity = document.getElementById("jobIdentity");
 export const jobRoleTitle = document.getElementById("jobRoleTitle");
 export const jobCompanyName = document.getElementById("jobCompanyName");
+export const jobStatusBadge = document.getElementById("jobStatusBadge");
 
 export const goodFitList = document.getElementById("goodFitList");
 export const goodFitListMore = document.getElementById("goodFitListMore");

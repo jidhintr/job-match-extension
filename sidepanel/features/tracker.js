@@ -107,6 +107,19 @@ function hexToRgba(hex, alpha) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
+export function paintStatusChip(el, status) {
+  const color = colorForStatus(status);
+  el.style.color = color;
+  el.style.backgroundColor = hexToRgba(color, 0.16);
+  el.style.borderColor = hexToRgba(color, 0.35);
+}
+
+export function trackedStatusForUrl(jobUrl) {
+  if (!jobUrl) return "";
+  const item = state.tracker.items.find((it) => it.jobUrl === jobUrl);
+  return String(item?.status || "").trim();
+}
+
 function applyStatusColor(item, selectEl, cardEl) {
   const color = colorForStatus(item.status);
   selectEl.style.backgroundColor = hexToRgba(color, 0.2);
@@ -149,6 +162,10 @@ window.addEventListener("tracker:refresh", () => {
   });
 });
 
+function notifyTrackerUpdated() {
+  window.dispatchEvent(new CustomEvent("tracker:updated", { detail: { count: state.tracker.items.length } }));
+}
+
 export async function refreshTrackerFromSheet() {
   await clearTrackerCache();
   state.tracker.loaded = false;
@@ -156,13 +173,18 @@ export async function refreshTrackerFromSheet() {
 
   const items = await ensureTrackerItems({ force: true });
   refreshTrackerStatusOptions();
-  window.dispatchEvent(new CustomEvent("tracker:updated", { detail: { count: items.length } }));
+  notifyTrackerUpdated();
   return items;
 }
 
 export function warmTrackerCache() {
   if (!state.settings.sheetsWebhookUrl || state.tracker.loaded) return;
-  ensureTrackerItems().then(refreshTrackerStatusOptions).catch((err) => console.error("Tracker cache warm-up failed.", err));
+  ensureTrackerItems()
+    .then(() => {
+      refreshTrackerStatusOptions();
+      notifyTrackerUpdated();
+    })
+    .catch((err) => console.error("Tracker cache warm-up failed.", err));
 }
 
 function formatDateTime(value) {
@@ -298,6 +320,7 @@ async function changeStatus(item, newStatus, selectEl, cardEl) {
     });
     await writeTrackerCache(state.tracker.items, state.tracker.cachedAt || Date.now());
     setTrackerStatus(`Status updated to ${newStatus}.`, "ok");
+    notifyTrackerUpdated();
   } catch (err) {
     console.error(err);
     item.status = previous;

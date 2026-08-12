@@ -5,7 +5,7 @@ import { condenseText, TEXT_LIMITS } from "../services/promptHelpers.js";
 import { extractJobTextFromActiveTab } from "../services/tabMessaging.js";
 import { fillList, fillPills, fillTechGapTable } from "../ui/renderHelpers.js";
 import { clampScore, splitCsv } from "../ui/format.js";
-import { findSavedJobByUrl, refreshTrackerFromSheet, ANALYSED_STATUS } from "./tracker.js";
+import { findSavedJobByUrl, refreshTrackerFromSheet, paintStatusChip, trackedStatusForUrl, ANALYSED_STATUS } from "./tracker.js";
 import { evaluateSaveGuard, confirmSave } from "./saveGuard.js";
 import {
   analyzeBtn,
@@ -17,6 +17,7 @@ import {
   jobIdentity,
   jobRoleTitle,
   jobCompanyName,
+  jobStatusBadge,
   goodFitList,
   goodFitListMore,
   goodFitToggle,
@@ -276,6 +277,10 @@ async function analyzeWithGemini(jobText, onModelSwitch) {
   return callGeminiWithFallback(state.settings.apiKey, systemPrompt, userPrompt, schema, onModelSwitch, maxOutputTokens);
 }
 
+window.addEventListener("tracker:updated", () => {
+  if (state.matcher.lastResult) renderTrackedStatus();
+});
+
 for (const gauge of [atsGauge, chanceGauge]) {
   gauge.arcLength = gauge.arc.getTotalLength();
 }
@@ -471,10 +476,18 @@ function renderWarnings(warnings) {
   warningsBanner.classList.toggle("hidden", !languageBarrier && !visaConcern);
 }
 
+export function renderTrackedStatus() {
+  const status = trackedStatusForUrl(state.matcher.lastJobUrl);
+  jobStatusBadge.textContent = status;
+  jobStatusBadge.classList.toggle("hidden", !status);
+  if (status) paintStatusChip(jobStatusBadge, status);
+}
+
 export function renderReport(result) {
   jobRoleTitle.textContent = result.job_title || "Role title unavailable";
   jobCompanyName.textContent = result.company_name || "Company unavailable";
   jobIdentity.classList.remove("hidden");
+  renderTrackedStatus();
 
   renderWarnings(result.warnings);
 

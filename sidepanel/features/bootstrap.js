@@ -107,10 +107,10 @@ async function tryLoadSavedAnalysisForCurrentTab() {
     }
 
     const result = buildResultFromSheetItem(saved);
-    renderReport(result);
     state.matcher.lastResult = result;
     state.matcher.lastJobUrl = url;
     state.matcher.savedToSheets = true;
+    renderReport(result);
     setStatus("Loaded saved summary from Google Sheets (no tokens used) — click Analyze again for the full report.", "ok");
     await persistTabSessionState();
   } catch (err) {
