@@ -24,6 +24,7 @@ The extension helps a candidate:
 
 - `manifest.json` — extension manifest
 - `background.js` — extension service worker
+- `content/highlighter.js` — in-page text highlighting and persistence
 - `options.html` / `options.js` — settings UI
 - `sidepanel/sidepanel.js` — tab bootstrap
 - `sidepanel/features/bootstrap.js` — initialization / restore state
@@ -31,6 +32,7 @@ The extension helps a candidate:
 - `sidepanel/features/prep.js` — interview prep generation and tracking
 - `sidepanel/features/scan.js` — bulk scanning of jobs pages
 - `sidepanel/features/tracker.js` — tracked jobs and status management
+- `sidepanel/features/highlights.js` — highlight list for the current page
 - `sidepanel/services/geminiClient.js` — Gemini request / retry / fallback logic
 - `sidepanel/services/aiProviders.js` — non-Google provider adapters
 - `sidepanel/services/storage.js` — storage and settings helpers

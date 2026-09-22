@@ -123,6 +123,52 @@ The sheet is keyed on the exact URL string (`findRowByJobUrl` in `google-apps-sc
 - Writes avoid creating further duplicates: `buildSheetPayload()` reuses the existing row's exact `jobUrl` when a canonical match is found, so the Apps Script still updates that row, and only genuinely new rows get a canonical key. Scan writes canonical keys directly.
 - Rows that already exist in duplicate are not merged. The lookup rules make the UI correct, but the sheet stays dirty until cleaned by hand.
 
+## Page highlighting
+
+`content/highlighter.js` is the first declared content script in the project — everything else is injected on demand through `chrome.scripting`. It has to be declared, because highlights must repaint on page load without the side panel being open.
+
+- A highlight is stored as `{ id, text, color, occurrence }`, never as a DOM path or a serialised Range. `textBuffer()` concatenates every text node in document order; `text` is sliced from that buffer and `occurrence` is how many identical slices precede it. Restoring finds the nth occurrence in a freshly built buffer, so re-rendered or re-ordered markup still resolves as long as the text is present.
+- `wrapRange()` wraps each intersecting text node in its own `<mark class="mr-hl">` sharing one `data-mr-id`, rather than calling `extractContents()`. A selection crossing an element boundary would otherwise produce invalid markup. Unwrapping walks every mark with that id and `normalize()`s the parent, which restores the original text exactly.
+- Wrapping splits text nodes but never changes the concatenated buffer, so occurrence indexes stay valid after other highlights are applied. Nodes already inside a `mr-hl` mark are skipped, which is the whole overlap policy — no nesting, no merge logic.
+- Storage is one `chrome.storage.local` key, `mrHighlights`, a map of canonical URL to an array of items. One key means the side panel can watch a single `storage.onChanged` entry. Nothing prunes it: an item is a few hundred bytes against a 10MB quota, so an eviction policy would cost more code than it saves.
+- That change listener is the only sync channel. The panel never messages the page to delete or recolor; it writes storage and the content script's `render()` reconciles the DOM. `applyItem()` early-returns when the id is already marked, so a write triggered by the page itself is a no-op and cannot loop. The one direct message is `MR_HL_SCROLL`, which has no storage effect.
+- `pageKey()` duplicates the rules of `canonicalJobUrl()` in `ui/format.js`. A manifest content script cannot import an ES module, and adding a web-accessible dynamic import for fifteen lines was not worth it. Both must change together; the panel's lookups use the shared helper.
+- The popup lives in a shadow root attached to `documentElement`, built with `createElement` rather than `innerHTML` so sites enforcing Trusted Types do not block it. Being a separate tree, its text also never enters `textBuffer()`.
+- `render()` runs at 0/800/2500ms because job sites hydrate late, and a 1.5s interval re-renders when `pageKey()` changes, which is how LinkedIn's in-place job switching is handled. No MutationObserver — the cost is not worth it for a feature the user re-triggers by reloading.
+- Highlights are per exact page, not per job. A posting reachable at two canonical URLs carries two sets.
+- The mark popup is opened from a capture-phase `click`, but `mouseup` fires first and its handler runs in a `setTimeout(0)` that lands *after* the click. That callback saw a collapsed selection and hid the popup the click had just opened, so the remove button was never reachable. The mouseup handler now records whether the press landed on a mark and leaves the popup alone in that case.
+- Clicking a mark also sends `MR_HL_OPEN_PANEL`. `background.js` opens the side panel for the sending tab, and an already-open panel switches itself to the Highlights tab. `chrome.sidePanel.open()` needs a user gesture, which the click carries through the message.
+
+## Highlights tab
+
+The panel's highlight list is a tab, not a section inside Matcher, and it exists only while the current page has highlights.
+
+- `#tabBtnHighlights` is declared first in the switcher and ships hidden. `renderHighlights()` owns its `hidden` class, so `applyTabVisibility()` skips the name entirely — it is driven by page content, never by the Settings > Visible Tabs map, and must not appear there.
+- It auto-selects on a hidden-to-visible transition and when a mark click asks for focus, tracked by `tabWasVisible`. Adding a highlight while the user is reading another tab therefore does not yank them away, but opening the panel on a marked page lands on the list.
+- When the last highlight goes, the tab hides and, if it was active, navigation falls back to the first visible button. That restores the normal first tab (Scan Jobs or whatever Settings leaves visible).
+- Removal from the list writes storage and lets the content script reconcile, the same path as the in-page X, so the two can never disagree.
+
+## Notes on a highlight
+
+A highlight carries an optional `note`, so the same selection can be a colour mark, a tag, or a question. The popup shows the swatch row and a text field together: a swatch click applies whatever is in the field, Enter applies the note alone with `NOTE_COLOR`. There is no separate "add note" step, and no separate item type — `note` is just a field, so items written before it existed read as colour-only.
+
+- A marked span with a note gets a dashed bottom border and its note in `title`, so the page itself shows which marks carry one and what they say on hover.
+- `styleMark()` is the single place that paints a mark from an item, called by `wrapRange()` on creation and by `render()` for marks that already exist. Before this, `render()` early-returned on a present id, so a note edited in the side panel never reached the page.
+- The field is not focused for a fresh selection — focusing it collapses the visible selection, which reads as the highlight being lost. It is focused when an existing mark is clicked, where there is no selection to lose. The saved `Range` is cloned up front, so clicking into the field never invalidates the pending highlight.
+- Clearing a note in the panel moves the item from the Notes group back to Colors. That is the only way an item changes group, and nothing else keys off it.
+- The field takes focus as soon as the popup opens, so a selection can be tagged by typing. That collapses the visible selection, which is why the `Range` is cloned before the popup is built — the pending highlight does not depend on the selection still existing.
+- Nine swatches sit on one row at 20px with a 5px gap inside a 260px popup. Adding a tenth wraps the remove button onto a line of its own, so widen the popup or shrink the swatch if the palette grows.
+- The two per-group clear buttons are hidden unless both groups have items. With only one kind on the page they would each do exactly what Remove All does.
+
+## Highlight ordering
+
+Array order is display order, and the side panel reorders by drag. The two rendered groups (Colors, Notes) drag independently but share one stored array.
+
+- `reorderHighlights()` takes the new id order of each group and walks the original array, filling each slot from the queue of the group that slot belongs to. A drag inside one group therefore cannot disturb the other group's relative positions, and no per-item index or sort key has to be stored.
+- If a queue runs dry or an id is unknown — a stale DOM against newer storage — the whole reorder is dropped rather than writing a partially resolved array.
+- The list is rebuilt from the `storage.onChanged` echo of its own write, so the drag result and the stored order can never drift.
+- The note field inside a card turns the card's `draggable` off on mousedown and back on at blur. Without it the card starts a drag instead of letting the caret into the input.
+
 ## Design notes
 
 - Use Sheets as a cache and status source when a given job URL has already been analyzed.

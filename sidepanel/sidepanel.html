@@ -16,6 +16,7 @@
     </header>
 
     <div class="tab-switcher">
+      <button class="tab-btn hidden" id="tabBtnHighlights" data-tab="highlights" type="button">Highlights</button>
       <button class="tab-btn" id="tabBtnScan" data-tab="scan" type="button">Scan Jobs</button>
       <button class="tab-btn active" id="tabBtnMatcher" data-tab="matcher" type="button">Matcher</button>
       <button class="tab-btn" id="tabBtnPrep" data-tab="prep" type="button">Interview Prep</button>
@@ -29,6 +30,25 @@
     </div>
 
     <main class="content">
+      <div id="highlightsView" class="tab-view hidden">
+        <div class="highlights-toolbar">
+          <span id="highlightsCount" class="highlights-count">0</span>
+          <div class="highlights-actions">
+            <button id="clearColorsBtn" class="secondary-btn small" type="button">Clear Colors</button>
+            <button id="clearNotesBtn" class="secondary-btn small" type="button">Clear Notes</button>
+            <button id="clearHighlightsBtn" class="secondary-btn small" type="button">Remove All</button>
+          </div>
+        </div>
+        <div id="colorGroup" class="highlights-group hidden">
+          <h4 class="highlights-group-title">Colors</h4>
+          <div id="colorList" class="highlights-list"></div>
+        </div>
+        <div id="noteGroup" class="highlights-group hidden">
+          <h4 class="highlights-group-title">Notes</h4>
+          <div id="noteList" class="highlights-list"></div>
+        </div>
+      </div>
+
       <div id="matcherView" class="tab-view">
       <div id="warningsBanner" class="warnings-banner hidden"></div>
 

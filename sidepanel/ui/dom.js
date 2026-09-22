@@ -48,6 +48,15 @@ export const goodFitList = document.getElementById("goodFitList");
 export const goodFitListMore = document.getElementById("goodFitListMore");
 export const goodFitToggle = document.getElementById("goodFitToggle");
 
+export const highlightsCount = document.getElementById("highlightsCount");
+export const colorGroup = document.getElementById("colorGroup");
+export const colorList = document.getElementById("colorList");
+export const noteGroup = document.getElementById("noteGroup");
+export const noteList = document.getElementById("noteList");
+export const clearColorsBtn = document.getElementById("clearColorsBtn");
+export const clearNotesBtn = document.getElementById("clearNotesBtn");
+export const clearHighlightsBtn = document.getElementById("clearHighlightsBtn");
+
 export const report = document.getElementById("report");
 export const emptyState = document.getElementById("emptyState");
 export const warningsBanner = document.getElementById("warningsBanner");
@@ -58,7 +67,8 @@ export const prepView = document.getElementById("prepView");
 export const scanView = document.getElementById("scanView");
 export const trackerView = document.getElementById("trackerView");
 export const kpiView = document.getElementById("kpiView");
-export const tabViewsByName = { matcher: matcherView, prep: prepView, scan: scanView, tracker: trackerView, kpi: kpiView };
+export const highlightsView = document.getElementById("highlightsView");
+export const tabViewsByName = { matcher: matcherView, prep: prepView, scan: scanView, tracker: trackerView, kpi: kpiView, highlights: highlightsView };
 export const tabButtonsByName = {};
 tabButtons.forEach((btn) => { tabButtonsByName[btn.dataset.tab] = btn; });
 export const scanAndFilterBtn = document.getElementById("scanAndFilterBtn");

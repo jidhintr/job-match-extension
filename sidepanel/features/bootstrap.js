@@ -35,6 +35,7 @@ import { createStatusLine } from "../ui/statusLine.js";
 import { renderReport, sanitizeSectionOrder, applySectionVisibilityAndOrder, buildResultFromSheetItem } from "./matcher.js";
 import { loadTrackerIfNeeded, refreshTrackerStatusOptions, sanitizeTrackerStatusOptions, findSavedJobByUrl, warmTrackerCache } from "./tracker.js";
 import { refreshKpiTab, renderKpiIfLoaded } from "./kpi.js";
+import { renderHighlights } from "./highlights.js";
 import { sanitizeCacheTtlHours } from "../services/trackerCache.js";
 import { sanitizeThreshold, DEFAULT_GUARD_MIN_ATS, DEFAULT_GUARD_MIN_CHANCE, DEFAULT_GUARD_KEYWORDS } from "./saveGuard.js";
 
@@ -165,6 +166,7 @@ export async function init() {
   await restoreTabState();
   refreshSetupBanner();
   refreshSourcePicker();
+  renderHighlights();
   warmTrackerCache();
 }
 
@@ -258,6 +260,7 @@ function applyTabVisibility(visibleTabs) {
   const anyVisible = Object.values(visible).some(Boolean);
 
   Object.entries(tabButtonsByName).forEach(([name, btn]) => {
+    if (name === "highlights") return;
     btn.classList.toggle("hidden", !anyVisible ? false : !visible[name]);
   });
 

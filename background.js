@@ -34,6 +34,12 @@ function togglePanelForTab(tabId) {
   else openForTab(tabId);
 }
 
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message?.type !== "MR_HL_OPEN_PANEL") return;
+  const tabId = sender.tab?.id;
+  if (tabId != null && !openPanels.has(tabId)) openForTab(tabId);
+});
+
 chrome.action.onClicked.addListener((tab) => {
   if (!tab?.id) return;
   togglePanelForTab(tab.id);

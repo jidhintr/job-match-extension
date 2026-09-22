@@ -8,6 +8,13 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/highlighter.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_title": "Open MatchResumer",
     "default_icon": {

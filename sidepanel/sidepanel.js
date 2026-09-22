@@ -4,6 +4,7 @@ import "./features/prep.js";
 import "./features/scan.js";
 import "./features/tracker.js";
 import "./features/kpi.js";
+import "./features/highlights.js";
 
 const panelTabId = Number(new URLSearchParams(location.search).get("tabId"));
 if (Number.isFinite(panelTabId)) {
