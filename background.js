@@ -7,16 +7,6 @@ function disablePanelByDefault() {
 chrome.runtime.onInstalled.addListener(disablePanelByDefault);
 chrome.runtime.onStartup.addListener(disablePanelByDefault);
 
-const openPanels = new Set();
-
-chrome.runtime.onConnect.addListener((port) => {
-  if (!port.name.startsWith("panel:")) return;
-  const tabId = Number(port.name.slice("panel:".length));
-  if (!Number.isFinite(tabId)) return;
-  openPanels.add(tabId);
-  port.onDisconnect.addListener(() => openPanels.delete(tabId));
-});
-
 function openForTab(tabId) {
   chrome.sidePanel.setOptions({ tabId, path: `${PANEL_PATH}?tabId=${tabId}`, enabled: true }).catch(() => {});
   chrome.sidePanel.open({ tabId }).catch((err) => {
@@ -24,31 +14,18 @@ function openForTab(tabId) {
   });
 }
 
-function closeForTab(tabId) {
-  openPanels.delete(tabId);
-  chrome.sidePanel.setOptions({ tabId, enabled: false }).catch(() => {});
-}
-
-function togglePanelForTab(tabId) {
-  if (openPanels.has(tabId)) closeForTab(tabId);
-  else openForTab(tabId);
-}
-
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message?.type !== "MR_HL_OPEN_PANEL") return;
-  const tabId = sender.tab?.id;
-  if (tabId != null && !openPanels.has(tabId)) openForTab(tabId);
+  if (sender.tab?.id != null) openForTab(sender.tab.id);
 });
 
 chrome.action.onClicked.addListener((tab) => {
-  if (!tab?.id) return;
-  togglePanelForTab(tab.id);
+  if (tab?.id) openForTab(tab.id);
 });
 
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "open-side-panel") {
-    if (!tab?.id) return;
-    togglePanelForTab(tab.id);
+    if (tab?.id) openForTab(tab.id);
   } else if (command === "analyze-resume") {
     if (!tab?.id) return;
     chrome.runtime.sendMessage({ type: "JOB_MATCH_SHORTCUT_ANALYZE", tabId: tab.id }).catch(() => {});
@@ -56,6 +33,5 @@ chrome.commands.onCommand.addListener((command, tab) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  openPanels.delete(tabId);
   chrome.storage.session.remove(`${SESSION_KEY_PREFIX}${tabId}`).catch(() => {});
 });

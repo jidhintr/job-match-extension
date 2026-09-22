@@ -6,11 +6,6 @@ import "./features/tracker.js";
 import "./features/kpi.js";
 import "./features/highlights.js";
 
-const panelTabId = Number(new URLSearchParams(location.search).get("tabId"));
-if (Number.isFinite(panelTabId)) {
-  chrome.runtime.connect({ name: `panel:${panelTabId}` });
-}
-
 function focusPanel() {
   window.focus();
   if (!document.activeElement || document.activeElement === document.body) {
