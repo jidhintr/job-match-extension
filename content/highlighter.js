@@ -254,8 +254,8 @@
   }
 
   async function readItems() {
-    const all = await readAll();
-    return all[pageKey()] || [];
+    const entry = (await readAll())[pageKey()];
+    return Array.isArray(entry) ? entry : entry?.items || [];
   }
 
   async function writeItems(items) {

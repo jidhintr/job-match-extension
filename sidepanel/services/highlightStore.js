@@ -9,7 +9,9 @@ async function readAll() {
 
 export async function getHighlights(url) {
   const key = canonicalJobUrl(url);
-  return key ? (await readAll())[key] || [] : [];
+  if (!key) return [];
+  const entry = (await readAll())[key];
+  return Array.isArray(entry) ? entry : entry?.items || [];
 }
 
 async function save(url, items) {
