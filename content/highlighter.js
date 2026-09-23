@@ -86,14 +86,22 @@
   shadow.append(style, pop);
   document.documentElement.appendChild(host);
 
+  let noteInput = null;
+
   function hidePopup() {
     pop.classList.add("hidden");
+  }
+
+  function isEditable(node) {
+    const el = node?.nodeType === 1 ? node : node?.parentElement;
+    return !!el?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
   }
 
   function showPopup(rect, { note = "", onApply, onRemove, focusNote = false }) {
     pop.replaceChildren();
 
     const input = document.createElement("input");
+    noteInput = input;
     input.className = "note";
     input.value = note;
     input.placeholder = "Note or question";
@@ -318,7 +326,7 @@
   }
 
   document.addEventListener("mouseup", (event) => {
-    if (event.target === host) return;
+    if (event.button !== 0 || event.target === host) return;
     const onMark = !!event.target?.closest?.("mark.mr-hl");
     setTimeout(() => {
       const selection = window.getSelection();
@@ -326,9 +334,12 @@
         if (!onMark) hidePopup();
         return;
       }
+      if (isEditable(selection.anchorNode)) {
+        hidePopup();
+        return;
+      }
       const saved = selection.getRangeAt(0).cloneRange();
       showPopup(saved.getBoundingClientRect(), {
-        focusNote: true,
         onApply: (color, note) => {
           if (!color && !note) return;
           selection.removeAllRanges();
@@ -361,8 +372,19 @@
   );
 
   document.addEventListener("scroll", hidePopup, true);
+  document.addEventListener("contextmenu", hidePopup, true);
+
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") hidePopup();
+    if (pop.classList.contains("hidden")) return;
+    if (event.key === "Escape") {
+      hidePopup();
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key.length !== 1 || shadow.activeElement === noteInput) return;
+    event.preventDefault();
+    noteInput.focus({ preventScroll: true });
+    noteInput.value += event.key;
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
